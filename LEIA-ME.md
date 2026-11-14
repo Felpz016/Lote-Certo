@@ -58,7 +58,7 @@ dados de outra conta nem libera a própria assinatura.
 2. Firestore: criar o banco em `southamerica-east1`.
 3. Authentication: ativar o login com Google.
 4. Colar o `firebaseConfig` do app Web em `src/firebase-config.js`.
-5. Em `firestore.rules`, trocar `SEU_EMAIL@gmail.com` pelo e-mail do administrador.
+5. Em `firestore.rules`, trocar `SEU_EMAIL@gmail.com` pelo e-mail do administrador. Outros administradores ficam na mesma lista, logo abaixo.
 6. Publicar:
    ```
    npm ci
