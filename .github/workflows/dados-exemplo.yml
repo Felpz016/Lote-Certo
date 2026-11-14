@@ -5,11 +5,15 @@ on:
   workflow_dispatch:
     inputs:
       acao:
-        description: "preencher = apaga as fazendas da conta e cria a fazenda de exemplo; apagar = tira só a fazenda de exemplo"
+        description: "preencher = apaga as fazendas da conta e cria a fazenda de exemplo; adicionar = só cria o exemplo, sem apagar nada; apagar = tira só a fazenda de exemplo"
         required: true
         default: preencher
         type: choice
-        options: [preencher, apagar]
+        options: [preencher, adicionar, apagar]
+      email:
+        description: "E-mail Google da conta (vazio = o do administrador principal)"
+        required: false
+        default: ""
 
 jobs:
   dados:
@@ -18,7 +22,7 @@ jobs:
       contents: read
     env:
       CONTA_DE_SERVICO: ${{ secrets.LOTE_CERTO_SERVICE_ACCOUNT }}
-      EMAIL_CONTA: ${{ secrets.LOTE_CERTO_ADMIN_EMAIL }}
+      EMAIL_CONTA: ${{ inputs.email || secrets.LOTE_CERTO_ADMIN_EMAIL }}
       ACAO: ${{ inputs.acao }}
       TZ: America/Sao_Paulo
     steps:
