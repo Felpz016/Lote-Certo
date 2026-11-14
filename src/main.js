@@ -427,11 +427,12 @@ function telaAdmin(root) {
     <p class="note">Toda pessoa que entra com o Google aparece aqui. Libere o acesso de quem pagou. Deixe a data em branco para liberar sem prazo.</p>
     ${lista === null ? '<div class="loading">Buscando as contas…</div>' : !lista.length ? '<p class="empty">Ninguém entrou ainda.</p>' : `
     <div class="rows">${lista.map((c) => `
-      <form class="card rowf" data-conta="${c.id}" novalidate>
-        <div style="flex:2;min-width:200px"><b style="overflow-wrap:anywhere">${esc(c.email)}</b><div class="note">${esc(c.nome) || "sem nome"} · último acesso ${c.atualizadoEm ? d2(c.atualizadoEm.slice(0, 10)) : "—"}</div><div style="margin-top:6px">${situacao(c.assinatura)}${c.assinatura?.ate ? ` <span class="note">até ${dataHora(c.assinatura.ate)}</span>` : ""}</div></div>
-        <div class="f"><label for="ate-${c.id}">Vale até</label><input id="ate-${c.id}" type="date" value="${c.assinatura?.ate ? iso(c.assinatura.ate) : ""}"></div>
-        <button class="btn" type="submit" data-ativa="1">${c.assinatura?.ativa ? "Atualizar" : "Liberar acesso"}</button>
-        ${c.assinatura?.ativa ? '<button class="btn ghost" type="submit" data-ativa="0">Bloquear</button>' : ""}
+      <form class="card assin" data-conta="${c.id}" novalidate>
+        <div class="assin-info"><b class="assin-email">${esc(c.email)}</b><div class="note">${esc(c.nome) || "sem nome"} · último acesso ${c.atualizadoEm ? d2(c.atualizadoEm.slice(0, 10)) : "—"}</div><div class="assin-sit">${situacao(c.assinatura)}${c.assinatura?.ate ? ` <span class="note">até ${dataHora(c.assinatura.ate)}</span>` : ""}</div></div>
+        <div class="assin-ctl">
+          <div class="f"><label for="ate-${c.id}">Vale até</label><input id="ate-${c.id}" type="date" value="${c.assinatura?.ate ? iso(c.assinatura.ate) : ""}"></div>
+          <div class="assin-btns"><button class="btn" type="submit" data-ativa="1">${c.assinatura?.ativa ? "Atualizar" : "Liberar acesso"}</button>${c.assinatura?.ativa ? '<button class="btn ghost" type="submit" data-ativa="0">Bloquear</button>' : ""}</div>
+        </div>
       </form>`).join("")}</div>`}
   </div>`;
   $$("form[data-conta]", root).forEach((f) => {
