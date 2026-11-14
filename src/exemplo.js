@@ -40,6 +40,7 @@ export function exemplo() {
   L("l10", "010", 30, "M", "Nelore", 12, 250, 200, { pasto: "pa3", lote: { custoKg: 11, comissao: 800, frete: 1200, origem: "Leilão de Araçatuba", gmdEst: 0.6, ativo: false, apartadoEm: d(60), criterio: "Peso: acima e abaixo de 330 kg" } });
   L("l10a", "010/1", 18, "M", "Nelore", 17, 348, 60, { pasto: "pa3", dieta: "dt2", lote: { custoKg: null, gmdEst: 1.1, origemId: "l10", criterio: "Peso: acima e abaixo de 330 kg" } });
   L("l10b", "010/2", 12, "M", "Nelore", 17, 302, 60, { pasto: "pa2", lote: { custoKg: null, gmdEst: 0.6, origemId: "l10", criterio: "Peso: acima e abaixo de 330 kg" } });
+  L("l11", "011", 25, "F", "Nelore", 11, 240, 260, { pasto: "pa3", lote: { custoKg: 10.5, frete: 700, origem: "Sítio Boa Vista", gmdEst: 0.5, ativo: false, obs: "Novilhas para venda." } });
   L("l12", "012", 48, "M", "Nelore", 12, 262, 150, { pasto: "pa1", piquete: "1A", dieta: "dt1", lote: { custoKg: 11.5, comissao: 1200, frete: 1800, origem: "Sítio Boa Vista", gmdEst: 0.6 } });
   L("l13", "013", 35, "F", "Nelore", 10, 236, 133, { pasto: "pa2", lote: { custoKg: 10.2, frete: 900, origem: "Sítio Boa Vista", gmdEst: 0.5 } });
   L("l14", "014", 60, "M", "Cruzado (Angus × Nelore)", 14, 301, 95, { pasto: "pa2", lote: { custoKg: 12.1, comissao: 2500, frete: 3200, origem: "Leilão de Araçatuba", gmdEst: 0.8, obs: "Lote de terminação." } });
@@ -66,6 +67,8 @@ export function exemplo() {
       { id: "p6", loteId: "l13", data: d(24), peso: 283 },
       { id: "p7", loteId: "l14", data: d(16), peso: 384 },
       { id: "p9", loteId: "l10a", data: d(12), peso: 398 },
+      { id: "p10", loteId: "l11", data: d(150), peso: 318 },
+      { id: "p11", loteId: "l15", data: d(10), peso: 401 },
     ],
     sanidade: [
       { id: "s1", loteId: "l09", data: d(296), tipo: "protocolo", medId: "m1", ml: 216, mlCab: 5.4 },
@@ -80,14 +83,18 @@ export function exemplo() {
       { id: "s10", loteId: "l12", data: d(20), tipo: "protocolo", medId: "m1", ml: 312, mlCab: 6.5 },
       { id: "s11", loteId: "l14", data: d(30), tipo: "tratamento", doenca: "Pneumonia", medId: "m4", ml: 60, animais: 3 },
       { id: "s12", loteId: "l12", data: d(55), tipo: "tratamento", doenca: "Tristeza parasitária", medId: "m4", ml: 40, animais: 2 },
+      { id: "s14", loteId: "l11", data: d(259), tipo: "protocolo", medId: "m1", ml: 125, mlCab: 5 },
+      { id: "s15", loteId: "l11", data: d(259), tipo: "protocolo", medId: "m3", ml: 50, mlCab: 2 },
       { id: "s13", loteId: "l13", data: d(41), tipo: "tratamento", doenca: "Pneumonia", medId: "m4", ml: 20, animais: 1 },
     ],
     saidas: [
       { id: "x1", loteId: "l09", data: d(44), tipo: "abate", destino: "Frigorífico São Luís", peso: 512, quantidade: 40, precoArroba: 315, rendEsp: 52, rendReal: 53.4, precoKg: null, obs: "" },
+      { id: "x2", loteId: "l11", data: d(20), tipo: "vivo", destino: "Fazenda Três Irmãos", peso: 372, quantidade: 25, precoArroba: null, rendEsp: null, rendReal: null, precoKg: 12.4, obs: "Venda para recria." },
     ],
     custos: [
       { id: "c1", tipo: "fixo", descricao: "Salário do vaqueiro", categoria: "Funcionário", valor: 3200, mes: mes(320), recorrente: true },
       { id: "c2", tipo: "fixo", descricao: "Diesel do trator", categoria: "Diesel", valor: 900, mes: mes(320), recorrente: true },
+      { id: "c6", tipo: "fixo", descricao: "Energia elétrica", categoria: "Outro", valor: 450, mes: mes(320), recorrente: true },
       { id: "c3", tipo: "fixo", descricao: "Herbicida no Pasto 3", categoria: "Herbicida", valor: 1500, mes: mes(70), recorrente: false },
       { id: "c4", tipo: "geral", descricao: "Reforma do Pasto 4", data: d(210), valor: 36000, meses: 12 },
       { id: "c5", tipo: "geral", descricao: "Cerca nova na divisa", data: d(50), valor: 8400, meses: 24 },

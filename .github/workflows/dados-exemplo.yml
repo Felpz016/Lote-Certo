@@ -1,0 +1,36 @@
+name: Dados de exemplo
+
+# Roda só quando alguém manda (Actions → Dados de exemplo → Run workflow).
+on:
+  workflow_dispatch:
+    inputs:
+      acao:
+        description: "preencher = apaga as fazendas da conta e cria a fazenda de exemplo; apagar = tira só a fazenda de exemplo"
+        required: true
+        default: preencher
+        type: choice
+        options: [preencher, apagar]
+
+jobs:
+  dados:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CONTA_DE_SERVICO: ${{ secrets.LOTE_CERTO_SERVICE_ACCOUNT }}
+      EMAIL_CONTA: ${{ secrets.LOTE_CERTO_ADMIN_EMAIL }}
+      ACAO: ${{ inputs.acao }}
+      TZ: America/Sao_Paulo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-save --no-package-lock esbuild@0.24 firebase-admin@12
+      - run: npx esbuild scripts/dados-exemplo.mjs --bundle --platform=node --format=esm --external:firebase-admin --outfile="$RUNNER_TEMP/dados.mjs"
+      - name: Gravar no banco
+        run: |
+          printf '%s' "$CONTA_DE_SERVICO" > "$RUNNER_TEMP/conta.json"
+          cp "$RUNNER_TEMP/dados.mjs" ./dados-tmp.mjs
+          CHAVE="$RUNNER_TEMP/conta.json" node ./dados-tmp.mjs
+          rm -f "$RUNNER_TEMP/conta.json" ./dados-tmp.mjs

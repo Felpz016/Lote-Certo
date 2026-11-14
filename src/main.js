@@ -342,6 +342,7 @@ TELAS.conta = {
             <button class="btn ghost sm" type="submit">Salvar nome</button>
             ${f.id === S.fazendaId ? "" : `<button class="mini danger" type="button" data-excluir-faz="${f.id}" data-confirm="Confirmar exclusão da fazenda">Excluir fazenda</button>`}
           </form>${f.id === S.fazendaId ? "" : '<p class="note" style="margin-top:8px">Só dá para excluir uma fazenda sem nenhum lançamento.</p>'}</details>` : ""}
+          ${dono && f.exemplo === true && S.modo === "nuvem" ? `<div class="banner" style="margin-top:10px"><span><b>Fazenda de exemplo</b>, com dados fictícios para conhecer o sistema. Quando quiser, apague tudo dela de uma vez.</span><button class="btn sm" type="button" data-apagar-exemplo="${f.id}" data-confirm="Confirmar: apagar a fazenda de exemplo">Apagar exemplo</button></div>` : ""}
         </div>`).join("")}</div>
       ${dono ? `<form class="rowf" id="fNovaFaz" novalidate style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
         <div class="f"><label for="nf-nome">Nova fazenda</label><input id="nf-nome" autocomplete="off" placeholder="Nome da fazenda"></div>
@@ -377,6 +378,11 @@ TELAS.conta = {
       b.disabled = true; b.textContent = "Conferindo…";
       try { await store.excluirFazenda(f.id); toast(`${f.nome} excluída.`); }
       catch (err) { b.disabled = false; b.textContent = "Excluir fazenda"; toast(err.message === "Esta fazenda tem lançamentos." ? `${f.nome} tem lançamentos e não pode ser excluída.` : "Não foi possível excluir: " + err.message); }
+    }));
+    $$("[data-apagar-exemplo]").forEach((b) => confirmar(b, async () => {
+      b.disabled = true; b.textContent = "Apagando…";
+      try { await store.apagarFazendaExemplo(b.dataset.apagarExemplo); toast("Fazenda de exemplo apagada."); }
+      catch (err) { b.disabled = false; b.textContent = "Apagar exemplo"; toast("Não foi possível apagar: " + err.message); }
     }));
     confirmar($("#limparFaz"), async () => {
       const b = $("#limparFaz"), lista = repetidas();
