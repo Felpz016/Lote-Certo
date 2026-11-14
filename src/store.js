@@ -274,6 +274,20 @@ function storeNuvem(avisar, config, emulador) {
       if (await this.fazendaTemDados(id)) throw new Error("Esta fazenda tem lançamentos.");
       await deleteDoc(doc(fs, "contas", S.conta.id, "fazendas", id));
     },
+    /** Apaga a fazenda de exemplo (dados fictícios) com tudo o que tem dentro. */
+    async apagarFazendaExemplo(id) {
+      const f = (S.fazendas || []).find((x) => x.id === id);
+      if (!f || f.exemplo !== true) throw new Error("Só a fazenda de exemplo pode ser apagada assim.");
+      for (const col of COLECOES) {
+        const docs = (await getDocs(collection(fs, "contas", S.conta.id, "fazendas", id, col))).docs;
+        for (let i = 0; i < docs.length; i += 400) {
+          const b = writeBatch(fs);
+          docs.slice(i, i + 400).forEach((d) => b.delete(d.ref));
+          await b.commit();
+        }
+      }
+      await deleteDoc(doc(fs, "contas", S.conta.id, "fazendas", id));
+    },
     renomearFazenda(id, nome) {
       semEspera(updateDoc(doc(fs, "contas", S.conta.id, "fazendas", id), { nome, atualizadoEm: new Date().toISOString() }), "renomear a fazenda");
     },
