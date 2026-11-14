@@ -8,10 +8,12 @@ service cloud.firestore {
     function logado() { return request.auth != null; }
     function verificado() { return logado() && request.auth.token.email_verified == true; }
 
-    // TROQUE pelo e-mail Google de quem administra o Lote Certo e publique de novo.
+    // Administradores do Lote Certo. O primeiro vem do segredo LOTE_CERTO_ADMIN_EMAIL
+    // na publicação; para incluir outro, acrescente o e-mail Google (minúsculo) na lista.
     function admin() {
       return verificado() && request.auth.token.email in [
-        'SEU_EMAIL@gmail.com'
+        'SEU_EMAIL@gmail.com',
+        'otaviojosepontieri@gmail.com'
       ];
     }
     function dono(conta) { return logado() && request.auth.uid == conta; }
