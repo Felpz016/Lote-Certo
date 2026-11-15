@@ -111,7 +111,7 @@ const TEMAS = [
   ["sanidade", 4, /aftosa|brucelose|vacina|sanit[áa]ri|raiva|tuberculose|carrapato|verm[ií]f|doen[çc]a|gta|tristeza parasit/],
   ["reposicao", 4, /bezerr|reposi[çc][ãa]o|boi magro|garrote|desmama|rela[çc][ãa]o de troca/],
   ["confinamento", 3, /confina|di[áa]ria|semiconfina|tip\b|terminação intensiva/],
-  ["insumos", 3, /milho|farelo|soja|ra[çc][ãa]o|suplement|sal mineral|fertiliz|ureia|silagem/],
+  ["insumos", 3, /milho|farelo|soja|(?<![a-zà-ú])ra[çc](?:[ãa]o|[õo]es)|suplement|sal mineral|fertiliz|ureia|silagem/],
   ["clima", 3, /chuva|seca|estiagem|geada|el ni[ñn]o|la ni[ñn]a|pastage|capim|clima/],
   ["credito", 3, /cr[ée]dito|plano safra|juros|financiamento|pronamp|seguro rural|d[íi]vida/],
   ["politica", 2, /minist[ée]rio|governo|lei\b|imposto|funrural|tribut|mapa\b/],
