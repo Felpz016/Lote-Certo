@@ -75,6 +75,7 @@ export function criarStore(avisar) {
 //   contas/{uid}/membros/{e-mail}                 sócio ou funcionário com acesso
 //   convites/{e-mail}                             diz a quem entra de qual conta ele é membro
 //   assinaturas/{uid}                             assinatura da conta (só o administrador grava)
+//   publico/indices                               preços e notícias do dia (só o robô diário grava)
 function storeNuvem(avisar, config, emulador) {
   const app = initializeApp(config);
   // A sessão fica guardada no aparelho (não some ao fechar o navegador ou o app).
@@ -234,7 +235,7 @@ function storeNuvem(avisar, config, emulador) {
     Object.keys(parar).forEach(soltar);
     S.usuario = u ? { nome: u.displayName, email: u.email, foto: u.photoURL } : null;
     S.conta = null; S.assinatura = undefined; S.fazendas = null; S.fazendaId = null;
-    S.membros = []; S.perfil = "dono"; S.admin = false; S.adminContas = null; S.db = vazio(); S.carregado = false; S.erro = null;
+    S.membros = []; S.perfil = "dono"; S.indices = undefined; S.admin = false; S.adminContas = null; S.db = vazio(); S.carregado = false; S.erro = null;
     uid = u ? u.uid : null;
     email = u ? String(u.email || "").toLowerCase() : "";
     if (u) {
@@ -250,6 +251,8 @@ function storeNuvem(avisar, config, emulador) {
         if (c && c.donoUid && c.donoUid !== uid) ouvirConta(c.donoUid, c.donoNome);
         else ouvirConta(uid);
       }, () => ouvirConta(uid)));
+      // Índices do mercado: um documento só, igual para todo mundo, que o robô diário regrava.
+      parar.convite.push(onSnapshot(doc(fs, "publico", "indices"), (d) => { S.indices = d.exists() ? d.data() : null; avisar(); }, () => { S.indices = null; avisar(); }));
       // Administrador: só ele consegue listar as contas.
       getDocs(query(collection(fs, "contas"), limit(1)))
         .then(() => { S.admin = true; avisar(); })
