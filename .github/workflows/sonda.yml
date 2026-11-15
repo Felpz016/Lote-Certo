@@ -1,6 +1,7 @@
 name: Sonda de índices (temporário)
 
-# Teste do robô sem gravar nada (SECO=1) e sem segredos. Sai antes de ir para a main.
+# Teste do robô sem gravar no banco (SECO=1) e sem segredos. Guarda o retrato real dos índices
+# em src/indices-demo.js (usado só no modo de demonstração local). Sai antes de ir para a main.
 on:
   push:
     branches: [claude/project-thread-eup04h]
@@ -10,10 +11,21 @@ jobs:
   sonda:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: SECO=1 node scripts/indices.mjs
+      - run: SECO=1 node scripts/indices.mjs | tee "$RUNNER_TEMP/saida.txt"
+      - name: Guardar retrato para a demonstração
+        run: |
+          {
+            echo "// Retrato real dos Índices, gravado pelo robô (scripts/indices.mjs) em modo de teste."
+            echo "// Usado só no modo de demonstração local (?demo). O sistema de verdade lê publico/indices."
+            printf 'export const INDICES_DEMO = %s;\n' "$(grep '^DOC ' "$RUNNER_TEMP/saida.txt" | sed 's/^DOC //')"
+          } > src/indices-demo.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/indices-demo.js
+          git commit -m "Índices: retrato real para a demonstração local" && git push || echo "nada novo"
