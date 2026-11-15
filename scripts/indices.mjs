@@ -146,17 +146,19 @@ async function noticias() {
     try { const xs = itensRss(await baixar(url)); xs.forEach((x) => todas.push({ ...x, fonte })); log(`  ${fonte}: ${xs.length} notícias`); }
     catch (e) { log(`  ${fonte}: falhou (${e.message})`); }
   }
-  // tira repetidas (mesmo link ou título quase igual) e as velhas
-  const vistos = new Set(), unicas = [];
+  // tira as velhas e as repetidas (mesmo link, ou título com quase as mesmas palavras de outra já escolhida)
+  const palavras = (t) => new Set(normal(t).replace(/[^a-z0-9 ]/g, " ").split(" ").filter((w) => w.length > 3));
+  const parecida = (a, b) => { let c = 0; a.forEach((w) => b.has(w) && c++); return c / Math.min(a.size, b.size || 1) >= 0.7; };
+  const unicas = [], links = new Set();
   for (const n of todas.sort((a, b) => b.data.localeCompare(a.data))) {
-    const k = normal(n.titulo).replace(/[^a-z0-9 ]/g, "").split(" ").filter((w) => w.length > 3).slice(0, 7).join(" ");
-    if (vistos.has(n.link) || vistos.has(k)) continue;
-    vistos.add(n.link); vistos.add(k);
-    if ((agora - Date.parse(n.data)) / 864e5 <= DIAS_NOTICIA) unicas.push(n);
+    if ((agora - Date.parse(n.data)) / 864e5 > DIAS_NOTICIA || links.has(n.link)) continue;
+    const ws = palavras(n.titulo);
+    if (unicas.some((u) => parecida(ws, u.ws))) continue;
+    links.add(n.link); unicas.push({ ...n, ws });
   }
   return unicas.map((n) => pontuar(n, agora)).filter((n) => n.pontos > 0 && n.temas.length)
     .sort((a, b) => b.pontos - a.pontos).slice(0, MAX_NOTICIAS)
-    .map(({ cats, pontos, ...n }) => n);
+    .map(({ cats, pontos, ws, ...n }) => n);
 }
 
 // ------------------------------------------------------------ principal

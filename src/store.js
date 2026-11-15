@@ -16,7 +16,6 @@ import {
 } from "firebase/firestore";
 import { firebaseConfig } from "./firebase-config.js";
 import { exemplo } from "./exemplo.js";
-import { indicesExemplo } from "./indices-exemplo.js";
 
 // lotes, pesagens, sanidade (protocolo e tratamento), saidas,
 // pastos, movs (mudanças de pasto), gmds (ajustes do GMD estimado),
@@ -437,7 +436,7 @@ function storeDemo(avisar) {
     fazendaId: tudo.atual,
     membros: [],
     perfil: new URLSearchParams(location.search).get("perfil") === "campo" ? "campo" : "dono",
-    indices: indicesExemplo(),
+    indices: undefined, // retrato real dos índices, carregado logo abaixo só no teste local
     admin: false,
     adminContas: null,
     carregado: true,
@@ -445,6 +444,7 @@ function storeDemo(avisar) {
     pendentes: 0,
     erro: null,
   };
+  import("./indices-demo.js").then((m) => { S.indices = { ...m.INDICES_DEMO, demo: true }; avisar(); }, () => { S.indices = null; avisar(); });
   const persistir = () => {
     tudo.dados[S.fazendaId] = S.db; tudo.atual = S.fazendaId; tudo.fazendas = S.fazendas;
     try { localStorage.setItem(CHAVE, JSON.stringify(tudo)); } catch { /* sem espaço ou bloqueado */ }

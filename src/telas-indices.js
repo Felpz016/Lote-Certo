@@ -1,5 +1,6 @@
-// Índices: preço da arroba, do bezerro, dos grãos e do dólar, notícias do agro e o que isso significa
-// para a fazenda aberta. Os números vêm do documento publico/indices, que um robô atualiza todo dia de manhã.
+// Índices: arroba e milho na bolsa B3, dólar do Banco Central, notícias do agro e o que isso significa
+// para a fazenda aberta. Os números vêm do documento publico/indices, que um robô atualiza todo dia
+// (scripts/indices.mjs). Nada aqui é inventado: sem dado novo, a tela mostra o último real, com a data dele.
 import { S, M, $, $$, esc, d2, n0, n1, n2, n3, pct, soCampo, store, toast, msgSalvo, TELAS, ui } from "./base.js";
 import { projecao, vigente } from "./calc.js";
 import { COR, linha } from "./graficos.js";
@@ -45,6 +46,19 @@ function paraFazenda(ix) {
     const prontos = m.ativos.filter((r) => r.alvo && r.alvo.falta <= 0);
     if (prontos.length) itens.push(`<div class="ix-item"><span class="label">Já no peso-alvo</span><b>${prontos.length} ${prontos.length === 1 ? "lote" : "lotes"}</b><span class="note">${prontos.map((r) => esc(r.lote.numero)).join(", ")}: com a arroba a ${real(arroba)}, vale cotar com o frigorífico.</span></div>`);
   }
+  const curva = ix.curva || [];
+  if (m.ativos.length && curva.length) {
+    const MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+    const mesDe = (iso) => `${MES[+iso.slice(5, 7) - 1]}/${iso.slice(2, 4)}`;
+    const ls = m.ativos.filter((r) => r.alvo && r.alvo.data && r.alvo.falta > 0)
+      .map((r) => ({ r, c: curva.find((c) => c.mes === mesDe(r.alvo.data)) })).filter((x) => x.c)
+      .map((x) => ({ ...x, p: projecao(x.r, x.c.v) }));
+    if (ls.length) {
+      const tot = ls.reduce((s, x) => s + x.p.resultado, 0);
+      itens.push(`<div class="ix-item"><span class="label">Pela B3, no mês em que ficam prontos</span><b class="${tot >= 0 ? "pos" : "neg"}">${realK(tot)}</b>
+        <span class="note">${ls.slice(0, 4).map((x) => `${esc(x.r.lote.numero)}: ${x.c.mes} a ${real(x.c.v, 0)}, ${x.p.resultado >= 0 ? "lucro" : "prejuízo"} de ${realK(Math.abs(x.p.resultado))}`).join("; ")}${ls.length > 4 ? `; e mais ${ls.length - 4}` : ""}. É o preço que a bolsa paga hoje pela arroba entregue naquele mês.</span></div>`);
+    }
+  }
   if (cot.bezerro) {
     const troca = (arroba * 18) / cot.bezerro.valor;
     itens.push(`<div class="ix-item"><span class="label">Reposição</span><b>${n2(troca)} bezerros</b><span class="note">é o que um boi gordo de 18 @ compra hoje (bezerro a ${real(cot.bezerro.valor, 0)} em ${esc(cot.bezerro.praca)}). Acima de 2, a troca está boa para quem recria.</span></div>`);
@@ -75,26 +89,30 @@ TELAS["indices"] = {
     const nots = (ix.noticias || []).filter((n) => tema === "tudo" || temaDe(n).includes(tema));
     const fmtC = (x, v) => (x.unidade === "R$" ? real(v, x.dec ?? 3) : real(v, x.dec ?? 2));
     return `
-    ${ix.exemplo ? '<div class="banner"><span><b>Números de exemplo.</b> No sistema de verdade, os preços e as notícias são buscados na internet todo dia de manhã.</span></div>' : ""}
-    ${velho && !ix.exemplo ? `<div class="banner"><span>Os índices são de ${d2(ix.atualizadoEm.slice(0, 10))}. O aparelho pode estar sem internet.</span></div>` : ""}
-    <div class="fin-top"><span class="note">Atualizado ${quando(ix.atualizadoEm)} · preços do último pregão divulgado</span></div>
+    ${ix.demo ? `<div class="banner"><span><b>Teste local.</b> Estes são os índices reais de ${d2(ix.atualizadoEm.slice(0, 10))}, guardados para o modo de demonstração.</span></div>` : ""}
+    ${velho && !ix.demo ? `<div class="banner"><span>Os índices são de ${d2(ix.atualizadoEm.slice(0, 10))}. O aparelho pode estar sem internet.</span></div>` : ""}
+    <div class="fin-top"><span class="note">Atualizado ${quando(ix.atualizadoEm)} · preços do último pregão divulgado${(() => { const d = cots.map((x) => x.data).filter(Boolean).sort().pop(); return d ? ` (${d2(d).slice(0, 5)})` : ""; })()}</span></div>
     <section class="ix-cots">${cots.map((x) => `<button type="button" class="card ix-cot${x.k === c.k ? " on" : ""}" data-cot="${x.k}" aria-pressed="${x.k === c.k}">
       <span class="label">${esc(x.nome)}</span><span class="v">${fmtC(x, x.valor)}</span>
-      <span class="s">${esc(x.unidade)} · ${esc(x.praca)}</span><span class="s">${varTxt(x.var1d)} no dia · ${varTxt(x.var30d)} em 30 dias</span></button>`).join("")}</section>
+      <span class="s">${esc(x.unidade)} · ${esc(x.praca)}</span><span class="s">${x.var1d == null ? "" : varTxt(x.var1d) + " no dia"}${x.var1d != null && x.var30d != null ? " · " : ""}${x.var30d == null ? "" : varTxt(x.var30d) + " em 30 dias"}</span></button>`).join("")}</section>
 
     <div class="grid2">
       <section class="card"><div class="sec-h"><div><h3>${esc(c.nome)}</h3><span class="note">${esc(c.unidade)} · ${esc(c.praca)} · fonte: ${esc(c.fonte)}</span></div>
         <div class="seg mini" role="group" aria-label="Período">${[[30, "30 dias"], [60, "60 dias"], [90, "90 dias"]].map(([v, l]) => `<input type="radio" name="ixDias" id="ixDias-${v}" value="${v}" ${v === dias ? "checked" : ""}><label for="ixDias-${v}">${l}</label>`).join("")}</div></div>
-        ${linha({ dados: serie.map((p) => ({ rot: d2(p.d).slice(0, 5), v: p.v })), fmt: (v) => fmtC(c, v), nome: `${c.nome}, últimos ${dias} dias`, cor: COR.receita, rotulo: c.unidade, altura: 220, doZero: false })}
+        ${serie.length >= 2 ? linha({ dados: serie.map((p) => ({ rot: d2(p.d).slice(0, 5), v: p.v })), fmt: (v) => fmtC(c, v), nome: `${c.nome}, últimos ${dias} dias`, cor: COR.receita, rotulo: c.unidade, altura: 220, doZero: false })
+          : `<p class="empty ix-forma">O gráfico vai se formando a cada pregão. Por enquanto há o preço de ${d2(c.data)}: <b>${fmtC(c, c.valor)}</b>.</p>`}
         <details class="mais tabela"><summary>Ver os números</summary><div class="tw"><table><thead><tr><th>Data</th><th class="r">${esc(c.unidade)}</th><th class="r">Variação</th></tr></thead><tbody>
           ${serie.map((p, i) => ({ ...p, vr: i ? ((p.v - serie[i - 1].v) / serie[i - 1].v) * 100 : null })).reverse().map((p) => `<tr><td>${d2(p.d)}</td><td class="r">${fmtC(c, p.v)}</td><td class="r">${p.vr == null ? "—" : varTxt(p.vr)}</td></tr>`).join("")}</tbody></table></div></details>
       </section>
-      <section class="card"><div class="sec-h"><div><h3>Arroba por praça</h3><span class="note">${esc(ix.pracasFonte || "")}</span></div></div>
-        <div class="tw"><table class="compacta"><thead><tr><th>Praça</th><th class="r">Boi</th><th class="r">Vaca</th><th class="r">Novilha</th></tr></thead><tbody>
-        ${(ix.pracas || []).map((p) => `<tr><td>${esc(p.praca)}</td><td class="r"><b>${real(p.boi, 0)}</b></td><td class="r">${real(p.vaca, 0)}</td><td class="r">${real(p.novilha, 0)}</td></tr>`).join("") || '<tr><td colspan="4" class="empty">Sem dados das praças hoje.</td></tr>'}</tbody></table></div>
-        <p class="note" style="margin-top:8px">R$ por arroba, pagamento à vista.</p>
-      </section>
+      ${(ix.curva || []).length ? `<section class="card"><div class="sec-h"><div><h3>Boi gordo na B3 por vencimento</h3><span class="note">pregão de ${d2(ix.curvaData)} · último negócio de cada mês</span></div></div>
+        <div class="tw"><table class="compacta"><thead><tr><th>Entrega em</th><th class="r">R$/@</th><th class="r">No dia</th></tr></thead><tbody>
+        ${ix.curva.map((x) => `<tr><td>${esc(x.mes)}</td><td class="r"><b>${real(x.v)}</b></td><td class="r">${x.var == null ? "—" : varTxt(x.var)}</td></tr>`).join("")}</tbody></table></div>
+        <p class="note" style="margin-top:8px">Quanto a bolsa paga hoje pela arroba entregue em cada mês. Serve de referência para planejar a venda.</p>
+      </section>` : ""}
     </div>
+    ${(ix.pracas || []).length ? `<section class="card"><div class="sec-h"><div><h3>Arroba por praça</h3><span class="note">${esc(ix.pracasFonte || "")}${ix.pracasData ? ` · ${d2(ix.pracasData)}` : ""}</span></div></div>
+      <div class="tw"><table class="compacta"><thead><tr><th>Praça</th><th class="r">R$/@ à vista</th></tr></thead><tbody>
+      ${ix.pracas.map((p) => `<tr><td>${esc(p.praca)}</td><td class="r"><b>${real(p.boi)}</b></td></tr>`).join("")}</tbody></table></div></section>` : ""}
 
     ${soCampo() ? "" : paraFazenda(ix)}
 

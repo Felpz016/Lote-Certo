@@ -5,7 +5,7 @@ name: Sonda de índices (temporário)
 on:
   push:
     branches: [claude/project-thread-eup04h]
-    paths: [scripts/indices.mjs, .github/workflows/sonda.yml]
+    paths: [scripts/indices.mjs, scripts/sonda-datagro.mjs, .github/workflows/sonda.yml]
 
 jobs:
   sonda:
@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - run: node scripts/sonda-datagro.mjs || true
       - run: SECO=1 node scripts/indices.mjs | tee "$RUNNER_TEMP/saida.txt"
       - name: Guardar retrato para a demonstração
         run: |
