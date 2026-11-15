@@ -1,6 +1,6 @@
 // Peças usadas por todas as telas: dados, formatação, formulários e avisos.
 import { criarStore } from "./store.js";
-import { hojeISO, modelo } from "./calc.js";
+import { hojeISO, modelo, configDe } from "./calc.js";
 
 let aoMudar = () => {};
 export const definirAoMudar = (f) => { aoMudar = f; };
@@ -26,7 +26,22 @@ export const n1 = (v) => (v == null ? "—" : fmt(v, 1));
 export const n2 = (v) => (v == null ? "—" : fmt(v, 2));
 export const n3 = (v) => (v == null ? "—" : fmt(v, 3));
 /** Dinheiro: R$ 1.234,56 */
-export const rs = (v, c = 2) => (v == null ? "—" : "R$ " + fmt(v, c));
+export const rs = (v, c = 2) => (v == null ? "—" : campo_() ? "•••" : "R$ " + fmt(v, c));
+/** Dinheiro curto para gráfico: R$ 12,3 mil · R$ 1,2 mi */
+export const rsK = (v) => {
+  if (v == null) return "—";
+  if (campo_()) return "•••";
+  const a = Math.abs(v), s = v < 0 ? "−" : "";
+  return s + "R$ " + (a >= 1e6 ? fmt(a / 1e6, a >= 1e7 ? 1 : 2) + " mi" : a >= 1e4 ? fmt(a / 1e3, a >= 1e5 ? 0 : 1) + " mil" : fmt(a, 0));
+};
+export const pct = (v, c = 1) => (v == null ? "—" : fmt(v, c) + "%");
+
+// ------------------------------------------------------------ perfil de acesso
+/** dono (tudo), gerente (lança e corrige) ou campo (só lança pesagem, sanidade, trato e pasto, sem ver custos). */
+export const perfil = () => S.perfil || "dono";
+const campo_ = () => S.perfil === "campo";
+export const soCampo = campo_;
+export const cfg = () => configDe(S.db);
 export const fmtGmd = (g) => (g == null ? "—" : n3(g));
 export const gmdCls = (g) => (g == null ? "" : g >= 0.5 ? "gmd-up" : "gmd-low");
 export const sinal = (v, f = n1) => (v == null ? "—" : (v >= 0 ? "+" : "−") + f(Math.abs(v)));
@@ -124,14 +139,18 @@ export const comPreco = (precos, novo) => [...(precos || []).filter((p) => p.des
 export const TELAS = {};
 export const MODS = [
   { k: "painel", s: "Painel", l: "Painel" },
-  { k: "lotes", s: "Lotes", l: "Lotes", abas: [["ativos", "Lotes ativos"], ["entrada", "Entrada de lote"]] },
+  { k: "lotes", s: "Lotes", l: "Lotes", abas: [["ativos", "Lotes ativos"], ["entrada", "Entrada de lote"], ["mortes", "Morte e perda"]] },
   { k: "pasto", s: "Pasto", l: "Manejo de pasto", abas: [["disposicao", "Disposição"], ["mudanca", "Mudança de pasto"], ["cadastro", "Cadastro de pastos"]] },
   { k: "pesagem", s: "Pesagem", l: "Pesagem e apartação", abas: [["pesagem", "Pesagem"], ["gmd", "Ajuste de GMD"], ["apartacao", "Apartação"]] },
-  { k: "sanidade", s: "Sanidade", l: "Sanidade", abas: [["protocolo", "Protocolo"], ["tratamento", "Tratamento"], ["medicamentos", "Medicamentos"]] },
-  { k: "trato", s: "Trato", l: "Trato", abas: [["dia", "Trato do dia"], ["troca", "Troca de dieta"], ["dietas", "Dietas"], ["ingredientes", "Ingredientes"]] },
+  { k: "sanidade", s: "Sanidade", l: "Sanidade", abas: [["protocolo", "Protocolo"], ["tratamento", "Tratamento"], ["calendario", "Calendário"], ["medicamentos", "Medicamentos"]] },
+  { k: "trato", s: "Trato", l: "Trato", abas: [["dia", "Trato do dia"], ["real", "Fornecimento real"], ["troca", "Troca de dieta"], ["dietas", "Dietas"], ["ingredientes", "Ingredientes"]] },
   { k: "custos", s: "Custos", l: "Custos fixos e gerais", abas: [["fixos", "Custos fixos"], ["gerais", "Custos gerais"]] },
   { k: "saida", s: "Saída", l: "Saída", abas: [["saida", "Saída de lote"], ["historico", "Histórico"]] },
+  { k: "financeiro", s: "Financeiro", l: "Financeiro", abas: [["geral", "Visão geral"], ["lotes", "Por lote"], ["areas", "Por área"], ["projecao", "Projeção"], ["relatorios", "Relatórios"]] },
 ];
+// O perfil "campo" só enxerga o que ele lança, sem telas de custo, preço, saída ou financeiro.
+const ABAS_CAMPO = { painel: null, lotes: ["ativos"], pasto: ["disposicao", "mudanca"], pesagem: ["pesagem"], sanidade: ["protocolo", "tratamento", "calendario"], trato: ["dia", "real", "troca"] };
+export const mods = () => (!campo_() ? MODS : MODS.filter((m) => m.k in ABAS_CAMPO).map((m) => (m.abas ? { ...m, abas: m.abas.filter((a) => ABAS_CAMPO[m.k].includes(a[0])) } : m)));
 export const ir = (r) => { location.hash = r; };
 /** Ganchos que a casca preenche (evita importação em círculo). */
 export const ui = { refazerLista() {} };

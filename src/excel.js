@@ -1,9 +1,11 @@
 // Gera a planilha Excel (.xlsx) com TUDO que está no sistema, já formatada.
 // Abas: Resumo, Lotes (com custos), Entradas, Saídas (fechamento), Pesagens, Sanidade,
-// Pastos, Mudanças de pasto, Trato, Dietas, Preços e Custos.
+// Pastos, Mudanças de pasto, Trato, Dietas, Preços, Custos, Financeiro mensal, Projeção, Comparativos,
+// Mortes, Fornecimento, Calendário sanitário e Registro de alterações.
 import ExcelJS from "exceljs";
 import {
   hojeISO, calcGmd, pesoEstimadoEm, modelo, fechamento, precoMl, dietaEm, vigente,
+  aquisicaoDe, quebraDe, cabEntrada, projecao, comparativo, carenciasAbertas,
 } from "./calc.js";
 
 let FAZENDA = "Fazenda";
@@ -39,6 +41,8 @@ export function linhasPlanilha(db) {
       Lote: l.numero,
       Situação: situacao(l),
       Cabeças: l.quantidade,
+      "Cabeças na entrada": cabEntrada(l),
+      "Mortes e perdas": r.mortes || 0,
       Sexo: sexo(l.sexo),
       Raça: l.raca || "",
       "Origem do lote": pai ? "Apartação do " + pai.numero : l.origem || "",
@@ -48,6 +52,8 @@ export function linhasPlanilha(db) {
       "GMD estimado (kg/dia)": r3(r.gmdEst),
       "GMD real da última pesagem": r3(r.gmdReal),
       "Dias na fazenda": r.dias,
+      "Peso-alvo (kg)": l.ativo && l.pesoAlvo ? l.pesoAlvo : null,
+      "Data prevista do peso-alvo": r.alvo && r.alvo.data ? dt(r.alvo.data) : null,
       "Pasto atual": l.ativo ? nomeDe("pastos", r.pastoId) : "",
       "Dieta atual": l.ativo && r.dietaId ? nomeDe("dietas", r.dietaId) : "",
       "Aquisição (R$)": c ? r2(c.aquisicao) : null,
@@ -58,6 +64,8 @@ export function linhasPlanilha(db) {
       "Custos gerais (R$)": c ? r2(c.gerais) : null,
       "Custo total (R$)": c ? r2(r.total) : null,
       "Custo por cabeça (R$/cab)": c && l.quantidade ? r2(r.total / l.quantidade) : null,
+      "Arrobas produzidas, estimativa (@)": c && l.ativo ? r1(r.arrobasProdEst) : null,
+      "Custo por arroba produzida, estimativa (R$/@)": c && l.ativo ? r2(r.custoArrobaProdEst) : null,
       "Custo de hoje (R$)": l.ativo ? r2(r.hoje.total) : null,
       Observações: l.obs || "",
     };
@@ -66,18 +74,22 @@ export function linhasPlanilha(db) {
   const Entradas = lotesOrd.filter((l) => !l.origemId).map((l) => ({
     "Data de entrada": dt(l.dataEntrada),
     Lote: l.numero,
-    Cabeças: l.quantidade,
+    Cabeças: cabEntrada(l),
     Sexo: sexo(l.sexo),
     Raça: l.raca || "",
     "Idade (meses)": l.idadeMeses ?? null,
+    "Peso médio de compra (kg)": l.pesoCompra || null,
     "Peso médio de entrada (kg)": l.pesoEntrada,
-    "Peso total de entrada (kg)": Math.round(l.pesoEntrada * l.quantidade),
+    "Quebra no transporte (%)": r1(quebraDe(l)),
+    "Peso total de entrada (kg)": Math.round(l.pesoEntrada * cabEntrada(l)),
     "Custo do kg (R$/kg)": l.custoKg ?? null,
     "Comissão (R$)": l.custoKg != null ? l.comissao || 0 : null,
     "Frete (R$)": l.custoKg != null ? l.frete || 0 : null,
-    "Custo de aquisição (R$)": l.custoKg != null ? r2(l.quantidade * l.pesoEntrada * l.custoKg + (l.comissao || 0) + (l.frete || 0)) : null,
+    "Custo de aquisição (R$)": l.custoKg != null ? r2(aquisicaoDe(l)) : null,
     "GMD estimado (kg/dia)": r3(l.gmdEst),
     "Origem do lote": l.origem || "",
+    GTA: l.gta || "",
+    "Nota fiscal": l.nf || "",
     Observações: l.obs || "",
   }));
 
@@ -104,6 +116,13 @@ export function linhasPlanilha(db) {
       "Custo por dia só produção (R$/dia)": f ? r2(f.custoDiaProd) : null,
       "Resultado (R$)": f ? r2(f.resultado) : null,
       "Resultado por cabeça (R$/cab)": f ? r2(f.resultadoCab) : null,
+      "Margem (%)": f ? r1(f.margem) : null,
+      "Arrobas produzidas (@)": f ? r1(f.arrobasProd) : null,
+      "Custo por arroba produzida (R$/@)": f ? r2(f.custoArrobaProd) : null,
+      "Rentabilidade (%)": f ? r1(f.rentab) : null,
+      "Rentabilidade ao mês (%)": f ? r2(f.rentabMes) : null,
+      GTA: s.gta || "",
+      "Nota fiscal": s.nf || "",
       Observação: s.obs || "",
     };
   });
@@ -141,6 +160,7 @@ export function linhasPlanilha(db) {
       "Animais tratados": s.animais ?? null,
       "Preço na data (R$/ml)": med ? r3(precoMl(med, s.data)) : null,
       "Custo (R$)": med && ml != null ? r2(ml * precoMl(med, s.data)) : null,
+      "Carência (dias)": med && med.carencia > 0 ? med.carencia : null,
     };
   });
 
@@ -155,6 +175,9 @@ export function linhasPlanilha(db) {
       "Lotes no pasto": p.lotes.map((r) => r.lote.numero).join(", "),
       Cabeças: p.cabecas,
       "Lotação (cab/ha)": p.lotacao == null ? null : r2(p.lotacao),
+      "Lotação (UA/ha)": p.ua == null ? null : r2(p.ua),
+      "Capacidade (UA/ha)": p.capacidade,
+      "Acima da capacidade": p.acima ? "Sim" : "",
       "Ocupado desde": p.desde ? dt(p.desde) : null,
       "Pasto ocioso em 12 meses (R$)": r2(p.ocioso),
     };
@@ -189,6 +212,7 @@ export function linhasPlanilha(db) {
         Dieta: d.nome,
         "Composição desde": dt(v.desde),
         "Consumo (% do peso vivo)": v.pv,
+        "Consumo informado em": v.base === "ms" ? "Matéria seca" : "Matéria natural",
         Ingrediente: it.nome,
         "Na mistura (%)": it.pct,
         "Preço hoje (R$/t)": it.rT,
@@ -222,7 +246,104 @@ export function linhasPlanilha(db) {
     };
   });
 
-  return { Lotes, Entradas, Saídas: Saidas, Pesagens, Sanidade, Pastos, "Mudanças de pasto": Movs, Trato, Dietas, Preços: Precos, Custos };
+  const Financeiro = m.fin.meses.map((x) => ({
+    "Mês": mesBr(x.mes),
+    "Receita (R$)": r2(x.receita),
+    "Aquisição (R$)": r2(x.aquisicao),
+    "Pasto (R$)": r2(x.pasto),
+    "Trato (R$)": r2(x.trato),
+    "Sanidade (R$)": r2(x.sanidade),
+    "Custos fixos (R$)": r2(x.fixos),
+    "Custos gerais (R$)": r2(x.gerais),
+    "Custo de produção (R$)": r2(x.producao),
+    "Despesa total (R$)": r2(x.despesa),
+    "Saldo do mês (R$)": r2(x.resultado),
+    "Cabeças compradas": x.cabCompradas || 0,
+    "Cabeças vendidas": x.cabVendidas || 0,
+    "Mortes e perdas": x.mortes || 0,
+    "Produção por cabeça por dia (R$/dia)": x.cabDias ? r2(x.producao / x.cabDias) : null,
+  }));
+
+  const Projecao = m.ativos.map((r) => {
+    const p = projecao(r), car = carenciasAbertas(db, r.lote, hoje);
+    return {
+      Lote: r.lote.numero,
+      Cabeças: r.cab,
+      "Peso hoje (kg)": r1(r.peso),
+      "Peso de venda (kg)": r1(p.pesoVenda),
+      "Data prevista da venda": p.temAlvo ? dt(p.data) : null,
+      "Dias que faltam": p.temAlvo ? p.dias : 0,
+      "Arrobas (@)": r1(p.arrobas),
+      "Preço simulado (R$/@)": m.cfg.precoArroba,
+      "Custo até a venda (R$)": r2(p.custo),
+      "Receita esperada (R$)": r2(p.receita),
+      "Resultado esperado (R$)": r2(p.resultado),
+      "Resultado por cabeça (R$/cab)": r2(p.resultadoCab),
+      "Preço que empata (R$/@)": r2(p.equilibrio),
+      "Rentabilidade ao mês (%)": r2(p.rentabMes),
+      "Carência aberta até": car.length ? dt(car.map((c) => c.livre).sort().pop()) : null,
+    };
+  });
+
+  const Comparativos = [];
+  for (const [dim, rot] of [["pasto", "Pasto"], ["fornecedor", "Fornecedor"], ["raca", "Raça"], ["dieta", "Dieta"]]) {
+    for (const x of comparativo(m, db, dim)) Comparativos.push({
+      "Comparar por": rot,
+      Grupo: x.nome,
+      "Nº de lotes": x.lotes,
+      Cabeças: x.cab,
+      "Dias médios": Math.round(x.diasMedio || 0),
+      "GMD do período (kg/dia)": r3(x.gmd),
+      "Custo por arroba produzida (R$/@)": r2(x.custoArroba),
+      "Nº de lotes vendidos": x.vendidos,
+      "Resultado (R$)": x.vendidos ? r2(x.res) : null,
+      "Resultado por cabeça (R$/cab)": r2(x.resultadoCab),
+    });
+  }
+
+  const Mortes = [...(db.mortes || [])].sort(porData).map((x) => {
+    const r = m.lote(x.loteId);
+    return {
+      Data: dt(x.data),
+      Lote: nome(x.loteId),
+      Cabeças: x.cabecas || 0,
+      Causa: x.causa || "",
+      "Perda estimada (R$)": r && r.cabEntrada ? r2((r.total / r.cabEntrada) * (x.cabecas || 0)) : null,
+      Observações: x.obs || "",
+    };
+  });
+
+  const Fornecimento = [...(db.fornecimentos || [])].sort(porData).map((x) => {
+    const l = loteById[x.loteId];
+    return {
+      Data: dt(x.data),
+      Lote: nome(x.loteId),
+      "Fornecido (kg)": x.kg || 0,
+      "Sobra (kg)": x.sobra || 0,
+      "Consumido (kg)": r1((x.kg || 0) - (x.sobra || 0)),
+      "Consumido por cabeça (kg)": l && l.quantidade ? r2(((x.kg || 0) - (x.sobra || 0)) / l.quantidade) : null,
+    };
+  });
+
+  const Calendario = [...(db.agenda || [])].sort(porData).map((x) => ({
+    Data: dt(x.data),
+    Lote: nome(x.loteId),
+    "O que fazer": x.descricao || "",
+    Situação: x.feito ? "Feito" : x.data < hoje ? "Atrasado" : "Pendente",
+    "Data em que foi feito": x.feitoEm ? dt(x.feitoEm) : null,
+  }));
+
+  const Registro = [...(db.log || [])].sort((a, b) => String(a.quando).localeCompare(String(b.quando))).map((x) => ({
+    "Quando": x.quando ? new Date(x.quando).toLocaleString("pt-BR") : "",
+    Quem: x.quem || "",
+    "Ação": x.acao === "excluiu" ? "Excluiu" : "Corrigiu",
+    "O que": x.oque || "",
+    Lote: x.loteId ? nome(x.loteId) : "",
+    "Campos alterados": x.campos || "",
+  }));
+
+  return { Lotes, Entradas, Saídas: Saidas, Pesagens, Sanidade, Pastos, "Mudanças de pasto": Movs, Trato, Dietas, Preços: Precos, Custos,
+    "Financeiro mensal": Financeiro, Projeção: Projecao, Comparativos, Mortes, Fornecimento, "Calendário sanitário": Calendario, "Registro de alterações": Registro };
 }
 
 // ------------------------------------------------------------ visual
@@ -252,6 +373,7 @@ function corGmd(g) {
 function coluna(h) {
   if (/R\$\/(kg|ml|t|@|ha|cab|dia)|por unidade/.test(h)) return { fmt: /R\$\/(kg|ml)|por unidade/.test(h) ? '"R$" #,##0.000' : '"R$" #,##0.00', al: "right", w: 15 };
   if (/R\$/.test(h)) return { fmt: '"R$" #,##0.00;[Red]-"R$" #,##0.00', al: "right", w: 16, total: "soma" };
+  if (/^Mês$|^Quando$|^Ação$|^Quem$/.test(h)) return { al: "center", w: h === "Quando" ? 20 : h === "Quem" ? 28 : 12 };
   if (/\(%|%\)/.test(h)) return { fmt: "0.0", al: "center", w: 13 };
   if (/\(@\)/.test(h)) return { fmt: "#,##0.0", al: "right", w: 13, total: "soma" };
   if (/\(ha\)/.test(h)) return { fmt: "#,##0.0", al: "right", w: 11, total: "soma" };
@@ -330,10 +452,19 @@ const SUB_ABA = {
   Dietas: "Composição atual de cada dieta, com o preço de hoje dos ingredientes.",
   Preços: "Histórico de preços de medicamentos, ingredientes e pastos, com a data em que cada um começou a valer.",
   Custos: "Custos fixos mensais e custos gerais diluídos em meses, rateados por cabeça por dia.",
+  "Financeiro mensal": "Receita, despesa por tipo de custo e saldo de cada mês. A despesa conta até ontem.",
+  Projeção: "Lotes ativos na data do peso-alvo: custo até a venda, receita no preço simulado e o preço da arroba que empata.",
+  Comparativos: "Onde o gado rende mais: GMD, custo por arroba produzida e resultado por pasto, fornecedor, raça e dieta.",
+  Mortes: "Mortes e perdas de cada lote. O custo das cabeças perdidas continua no lote.",
+  Fornecimento: "Trato realmente fornecido por dia: quilos no cocho, sobra e consumo.",
+  "Calendário sanitário": "Manejos agendados, com o que está pendente, atrasado ou feito.",
+  "Registro de alterações": "Correções e exclusões: quem fez, quando e em que lançamento.",
 };
 const COR_ABA = {
   Lotes: COR.verde, Entradas: "FF3F7A4D", Saídas: COR.terra, Pesagens: COR.amarelo, Sanidade: "FF2F6F8F",
   Pastos: "FF46A05E", "Mudanças de pasto": "FF46A05E", Trato: "FFF4B92F", Dietas: "FFF4B92F", Preços: COR.apagado, Custos: COR.vermelho,
+  "Financeiro mensal": COR.verdeEsc, Projeção: COR.verdeEsc, Comparativos: COR.verdeEsc, Mortes: COR.vermelho, Fornecimento: "FFF4B92F",
+  "Calendário sanitário": "FF2F6F8F", "Registro de alterações": COR.apagado,
 };
 const CONGELA = (nome) => (nome === "Preços" || nome === "Custos" ? 2 : nome === "Pastos" || nome === "Trato" || nome === "Dietas" ? 1 : 2);
 

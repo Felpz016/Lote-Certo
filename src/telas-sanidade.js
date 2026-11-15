@@ -1,9 +1,9 @@
 // Sanidade: protocolo (lote inteiro), tratamento (doença) e catálogo de medicamentos com preço por data.
 import {
   store, S, M, $, $$, esc, d2, n0, n1, n2, rs, num, tagLote, toast, msgSalvo, erros, ativos, lotePorId, nomeDe, ordenados, porId,
-  opcoesLotes, opcoes, campo, campoData, sel, seg, val, marcado, confirmar, histPrecos, comPreco, TELAS, hoje,
+  opcoesLotes, opcoes, campo, campoData, sel, seg, val, marcado, confirmar, histPrecos, comPreco, TELAS, hoje, soCampo, nomeLote,
 } from "./base.js";
-import { precoMl, vigente } from "./calc.js";
+import { precoMl, vigente, nDia, isoDia, dias } from "./calc.js";
 
 const custoSan = (s) => (s.medId ? (s.ml || 0) * precoMl(porId("meds", s.medId), s.data) : 0);
 const opcoesMed = (v) => opcoes("meds", v, S.db.meds.length ? "Escolha o medicamento" : "Nenhum medicamento cadastrado");
@@ -18,6 +18,7 @@ function atualizarLotes(id) {
 
 /** Custo sanitário por lote ativo, separando protocolo e tratamento. */
 function resumoPorLote() {
+  if (soCampo()) return "";
   const linhas = M().ativos.map((r) => {
     const san = S.db.sanidade.filter((s) => s.loteId === r.lote.id);
     const pro = san.filter((s) => s.tipo !== "tratamento").reduce((t, s) => t + custoSan(s), 0);
@@ -36,14 +37,16 @@ function historico(tipo) {
   if (!lista.length) return `<section class="card"><p class="empty">Nenhum ${tipo === "tratamento" ? "tratamento" : "protocolo"} lançado ainda.</p></section>`;
   const trat = tipo === "tratamento";
   return `<section class="card"><div class="sec-h"><h3>${trat ? "Tratamentos lançados" : "Protocolos lançados"}</h3><span class="note">toque na linha para abrir o lote</span></div>
-  <div class="tw"><table><thead><tr><th>Data</th><th>Lote</th>${trat ? "<th>Doença</th>" : ""}<th>Medicamento</th><th class="r">ml</th>${trat ? '<th class="r">Animais</th>' : '<th class="r">ml/cab</th>'}<th class="r">Custo</th></tr></thead><tbody>
+  <div class="tw"><table><thead><tr><th>Data</th><th>Lote</th>${trat ? "<th>Doença</th>" : ""}<th>Medicamento</th><th class="r">ml</th>${trat ? '<th class="r">Animais</th>' : '<th class="r">ml/cab</th>'}${soCampo() ? "" : '<th class="r">Custo</th>'}<th>Carência até</th></tr></thead><tbody>
   ${lista.map((s) => {
     const l = lotePorId(s.loteId), ml = mlSan(s), c = custoSan(s);
     return `<tr class="click" data-act="lote" data-id="${s.loteId}"><td>${d2(s.data)}</td><td>${tagLote(l)}</td>${trat ? `<td>${esc(s.doenca || "—")}</td>` : ""}<td>${esc(nomeSan(s))}</td><td class="r">${ml == null ? "—" : n1(ml)}</td>
-      <td class="r">${trat ? (s.animais || "—") : (s.mlCab != null ? n1(s.mlCab) : s.doseMl != null ? n1(s.doseMl) : l && ml != null && l.quantidade ? n1(ml / l.quantidade) : "—")}</td><td class="r">${s.medId ? rs(c) : "—"}</td></tr>`;
+      <td class="r">${trat ? (s.animais || "—") : (s.mlCab != null ? n1(s.mlCab) : s.doseMl != null ? n1(s.doseMl) : l && ml != null && l.quantidade ? n1(ml / l.quantidade) : "—")}</td>${soCampo() ? "" : `<td class="r">${s.medId ? rs(c) : "—"}</td>`}<td>${carAte(s)}</td></tr>`;
   }).join("")}
   </tbody></table></div><p class="note" style="margin-top:10px">Para apagar um lançamento, abra o lote e use Excluir no histórico.</p></section>`;
 }
+
+const carAte = (s) => { const m = s.medId ? porId("meds", s.medId) : null; if (!m || !(m.carencia > 0)) return "—"; const d = isoDia(nDia(s.data) + m.carencia); return d > hoje() ? `<span class="pill est">${d2(d)}</span>` : d2(d); };
 
 // ------------------------------------------------------------ protocolo
 let nLinhas = 1;
@@ -53,19 +56,21 @@ function calcProtocolo() {
   const box = $("#s-calc");
   if (!box) return;
   const l = lotePorId(val("s-lote")), data = val("s-data") || hoje(), porCab = marcado("s-modo") !== "tot";
-  let ml = 0, custo = 0, n = 0;
+  let ml = 0, custo = 0, n = 0, maiorCar = 0;
   for (let i = 0; i < nLinhas; i++) {
     const med = porId("meds", val("s-med-" + i)), q = num(val("s-ml-" + i));
     if (!med || !q || !l) continue;
+    if (med.carencia > maiorCar) maiorCar = med.carencia;
     const tot = porCab ? q * l.quantidade : q;
     ml += tot; custo += tot * precoMl(med, data); n++;
   }
   if (!l || !n) { box.innerHTML = '<span class="formula">Escolha o lote, o medicamento e a quantidade para ver o custo.</span>'; return; }
   box.innerHTML = `
     <div><span class="label">Total aplicado</span><b>${n1(ml)} ml</b><span class="note">${l.quantidade} cabeças</span></div>
-    <div><span class="label">Custo por cabeça</span><b>${rs(custo / l.quantidade)}</b></div>
-    <div class="res"><span class="label">Custo do protocolo</span><b>${rs(custo)}</b><span class="note">entra no custo do lote</span></div>
-    <span class="formula">Custo = ml total × preço por ml que valia em ${d2(data)}.</span>`;
+    ${soCampo() ? "" : `<div><span class="label">Custo por cabeça</span><b>${rs(custo / l.quantidade)}</b></div>
+    <div class="res"><span class="label">Custo do protocolo</span><b>${rs(custo)}</b><span class="note">entra no custo do lote</span></div>`}
+    ${maiorCar ? `<div><span class="label">Carência para abate</span><b>${d2(isoDia(nDia(data) + maiorCar))}</b><span class="note">${maiorCar} dias depois da aplicação</span></div>` : ""}
+    <span class="formula">${soCampo() ? "" : `Custo = ml total × preço por ml que valia em ${d2(data)}.`}</span>`;
 }
 
 TELAS["sanidade/protocolo"] = {
@@ -77,6 +82,7 @@ TELAS["sanidade/protocolo"] = {
         ${sel("s-lote", "Lote", opcoesLotes(ativos()))}
         ${campoData("s-data", "Data da aplicação")}
         ${seg("s-modo", "A quantidade é", [["cab", "ml por cabeça"], ["tot", "ml no lote todo"]], "cab")}
+        ${campo("s-ref", "Agendar reforço daqui a (dias)", { tipo: "number", modo: "numeric", passo: 1, ph: "opcional. Ex.: 30", hint: "Aparece como pendência no painel na data." })}
       </div>
       <div class="rows" id="s-linhas">${linhaMed(0)}</div>
       <div class="actions" style="margin-top:8px"><button class="btn ghost sm" type="button" id="s-mais">Adicionar outro medicamento</button></div>
@@ -110,6 +116,8 @@ TELAS["sanidade/protocolo"] = {
         if (!q || q <= 0) e.push(["s-ml-" + i, "Informe a quantidade em ml."]);
         if (medId && q > 0 && l) itens.push({ medId, ml: porCab ? q * l.quantidade : q, mlCab: porCab ? q : q / l.quantidade });
       }
+      const ref = num(val("s-ref"));
+      if (ref != null && (ref < 1 || !Number.isInteger(ref))) e.push(["s-ref", "Informe os dias (número inteiro) ou deixe em branco."]);
       if (!erros(f, e)) return;
       let custo = 0;
       const ops = itens.map((it) => {
@@ -117,8 +125,11 @@ TELAS["sanidade/protocolo"] = {
         custo += custoSan(dados);
         return { tipo: "set", col: "sanidade", id: store.novoId(), dados };
       });
+      const reforco = ref ? isoDia(nDia(data) + ref) : null;
+      if (reforco) ops.push({ tipo: "set", col: "agenda", id: store.novoId(), dados: { loteId: l.id, data: reforco, descricao: "Reforço: " + itens.map((it) => nomeDe("meds", it.medId)).join(" + "), feito: false } });
       store.gravar(ops);
-      toast(`Protocolo do ${l.numero} salvo: ${rs(custo)}. ${msgSalvo()}`);
+      toast(`Protocolo do ${l.numero} salvo${soCampo() ? "" : ": " + rs(custo)}.${reforco ? " Reforço agendado para " + d2(reforco) + "." : ""} ${msgSalvo()}`);
+      $("#s-ref").value = "";
       nLinhas = 1;
       $("#s-linhas").innerHTML = linhaMed(0);
       calcProtocolo();
@@ -135,10 +146,11 @@ function calcTratamento() {
   if (!l || !med || !ml) { box.innerHTML = '<span class="formula">Escolha o lote, o medicamento e a quantidade para ver o custo.</span>'; return; }
   const c = ml * precoMl(med, data);
   box.innerHTML = `
-    <div><span class="label">Preço na data</span><b>${rs(precoMl(med, data))}/ml</b></div>
+    ${soCampo() ? "" : `<div><span class="label">Preço na data</span><b>${rs(precoMl(med, data))}/ml</b></div>
     <div><span class="label">${an ? "Por animal tratado" : "Por cabeça do lote"}</span><b>${rs(c / (an || l.quantidade))}</b></div>
-    <div class="res"><span class="label">Custo do tratamento</span><b>${rs(c)}</b><span class="note">entra no custo do lote inteiro</span></div>
-    <span class="formula">Custo = ${n1(ml)} ml × preço por ml que valia em ${d2(data)}.</span>`;
+    <div class="res"><span class="label">Custo do tratamento</span><b>${rs(c)}</b><span class="note">entra no custo do lote inteiro</span></div>`}
+    ${med.carencia > 0 ? `<div><span class="label">Carência para abate</span><b>${d2(isoDia(nDia(data) + med.carencia))}</b><span class="note">${med.carencia} dias · vale para o lote inteiro</span></div>` : ""}
+    <span class="formula">${soCampo() ? `${n1(ml)} ml de ${esc(med.nome)}.` : `Custo = ${n1(ml)} ml × preço por ml que valia em ${d2(data)}.`}</span>`;
 }
 
 TELAS["sanidade/tratamento"] = {
@@ -180,7 +192,7 @@ TELAS["sanidade/tratamento"] = {
       if (!erros(f, e)) return;
       const dados = { loteId: l.id, data, tipo: "tratamento", doenca, medId, ml, animais: an || null };
       store.gravar([{ tipo: "set", col: "sanidade", id: store.novoId(), dados }]);
-      toast(`Tratamento do ${l.numero} salvo: ${rs(custoSan(dados))}. ${msgSalvo()}`);
+      toast(`Tratamento do ${l.numero} salvo${soCampo() ? "" : ": " + rs(custoSan(dados))}. ${msgSalvo()}`);
       for (const id of ["t-doenca", "t-ml", "t-an"]) $("#" + id).value = "";
       calcTratamento();
     };
@@ -195,8 +207,70 @@ TELAS["sanidade/tratamento"] = {
     }
     const top = [...cont.values()].sort((a, b) => b.n - a.n).slice(0, 8);
     return (top.length ? `<section class="card"><div class="sec-h"><h3>Doenças mais tratadas</h3></div>
-      <div class="tw"><table><thead><tr><th>Doença</th><th class="r">Tratamentos</th><th class="r">Animais</th><th class="r">Custo</th></tr></thead><tbody>
-      ${top.map((x) => `<tr><td>${esc(x.nome)}</td><td class="r">${x.n}</td><td class="r">${x.animais || "—"}</td><td class="r">${rs(x.custo)}</td></tr>`).join("")}</tbody></table></div></section>` : "") + historico("tratamento");
+      <div class="tw"><table><thead><tr><th>Doença</th><th class="r">Tratamentos</th><th class="r">Animais</th>${soCampo() ? "" : '<th class="r">Custo</th>'}</tr></thead><tbody>
+      ${top.map((x) => `<tr><td>${esc(x.nome)}</td><td class="r">${x.n}</td><td class="r">${x.animais || "—"}</td>${soCampo() ? "" : `<td class="r">${rs(x.custo)}</td>`}</tr>`).join("")}</tbody></table></div></section>` : "") + historico("tratamento");
+  },
+};
+
+// ------------------------------------------------------------ calendário sanitário
+TELAS["sanidade/calendario"] = {
+  form: () => `
+    <form class="card" id="fAg" novalidate>
+      <h3>Agendar manejo</h3>
+      <div class="fgrid">
+        ${sel("ag-lote", "Lote", opcoesLotes(ativos()))}
+        ${campo("ag-data", "Data prevista", { tipo: "date", v: isoDia(nDia(hoje()) + 30) })}
+        ${campo("ag-desc", "O que fazer", { ph: "Ex.: Reforço da vacina de clostridiose", full: true })}
+      </div>
+      <div class="actions"><button class="btn" type="submit">Agendar</button><span class="note">Na data, aparece como pendência no painel. O reforço também pode ser agendado direto no Protocolo.</span></div>
+    </form>`,
+  atualizarForm() { atualizarLotes("ag-lote"); },
+  ligar() {
+    $("#fAg").onsubmit = (ev) => {
+      ev.preventDefault();
+      const f = ev.target, l = lotePorId(val("ag-lote")), data = val("ag-data"), descricao = val("ag-desc");
+      const e = [];
+      if (!l) e.push(["ag-lote", "Escolha o lote."]);
+      if (!data) e.push(["ag-data", "Informe a data."]);
+      if (!descricao) e.push(["ag-desc", "Informe o que fazer."]);
+      if (!erros(f, e)) return;
+      store.gravar([{ tipo: "set", col: "agenda", id: store.novoId(), dados: { loteId: l.id, data, descricao, feito: false } }]);
+      toast(`Agendado para ${d2(data)}. ${msgSalvo()}`);
+      $("#ag-desc").value = "";
+    };
+  },
+  lista() {
+    const h = hoje(), ag = [...(S.db.agenda || [])];
+    const pend = ag.filter((a) => !a.feito).sort((a, b) => a.data.localeCompare(b.data));
+    const feitos = ag.filter((a) => a.feito).sort((a, b) => String(b.feitoEm || b.data).localeCompare(String(a.feitoEm || a.data))).slice(0, 30);
+    const quando = (a) => { const d = dias(h, a.data); return d < 0 ? `<span class="pill bad">Atrasado ${-d} ${d === -1 ? "dia" : "dias"}</span>` : d === 0 ? '<span class="pill est">Hoje</span>' : `<span class="pill">em ${d} ${d === 1 ? "dia" : "dias"}</span>`; };
+    // Lotes ainda em carência
+    const car = [];
+    for (const r of M().ativos) {
+      let pior = null;
+      for (const x of S.db.sanidade) {
+        if (x.loteId !== r.lote.id || !x.medId) continue;
+        const m = porId("meds", x.medId);
+        if (!m || !(m.carencia > 0)) continue;
+        const livre = isoDia(nDia(x.data) + m.carencia);
+        if (livre > h && (!pior || livre > pior.livre)) pior = { livre, med: m.nome, aplicado: x.data };
+      }
+      if (pior) car.push({ r, ...pior });
+    }
+    return `
+    <section class="card"><div class="sec-h"><h3>Pendências</h3><span class="note">${pend.length}</span></div>
+    ${pend.length ? `<div class="rows">${pend.map((a) => `<div class="rowf pend">${quando(a)}<span style="flex:1;min-width:170px"><b>${esc(nomeLote(a.loteId))}</b> · ${esc(a.descricao || "Reforço")} <span class="note">${d2(a.data)}</span></span>
+      <button class="btn ghost sm" type="button" data-feito="${a.id}">Marcar como feito</button><button class="mini danger" type="button" data-excluir-ag="${a.id}" data-confirm="Confirmar exclusão">Excluir</button></div>`).join("")}</div>
+      <p class="note" style="margin-top:10px">Marcar como feito só tira da lista. Para o custo entrar no lote, lance a aplicação em Protocolo.</p>` : '<p class="empty">Nada agendado.</p>'}</section>
+    ${car.length ? `<section class="card"><div class="sec-h"><h3>Lotes em carência para abate</h3><span class="note">${car.length}</span></div>
+      <div class="tw"><table><thead><tr><th>Lote</th><th>Medicamento</th><th>Aplicado em</th><th>Liberado em</th><th class="r">Faltam</th></tr></thead><tbody>
+      ${car.sort((a, b) => a.livre.localeCompare(b.livre)).map((c) => `<tr class="click" data-act="lote" data-id="${c.r.lote.id}"><td>${tagLote(c.r.lote)}</td><td>${esc(c.med)}</td><td>${d2(c.aplicado)}</td><td><b>${d2(c.livre)}</b></td><td class="r">${dias(h, c.livre)} dias</td></tr>`).join("")}</tbody></table></div></section>` : ""}
+    ${feitos.length ? `<section class="card"><div class="sec-h"><h3>Feitos</h3></div><div class="tw"><table><thead><tr><th>Previsto</th><th>Lote</th><th>O que era</th><th>Feito em</th></tr></thead><tbody>
+      ${feitos.map((a) => `<tr><td>${d2(a.data)}</td><td>${tagLote(lotePorId(a.loteId))}</td><td class="wrap">${esc(a.descricao || "")}</td><td>${d2(a.feitoEm)}</td></tr>`).join("")}</tbody></table></div></section>` : ""}`;
+  },
+  ligarLista() {
+    $$("[data-feito]").forEach((b) => { b.onclick = () => { store.gravar([{ tipo: "update", col: "agenda", id: b.dataset.feito, dados: { feito: true, feitoEm: hoje() }, semLog: true }]); toast("Marcado como feito."); }; });
+    $$("[data-excluir-ag]").forEach((b) => confirmar(b, () => { store.gravar([{ tipo: "delete", col: "agenda", id: b.dataset.excluirAg }]); toast("Agendamento excluído."); }));
   },
 };
 
@@ -207,10 +281,11 @@ TELAS["sanidade/medicamentos"] = {
   form: () => `
     <form class="card" id="fMed" novalidate>
       <h3>Novo medicamento</h3>
-      <div class="fgrid c3">
+      <div class="fgrid">
         ${campo("md-nome", "Nome do medicamento", { ph: "Ex.: Ivermectina 1%" })}
         ${campo("md-preco", "Preço do frasco (R$)", { tipo: "number", ph: "30" })}
         ${campo("md-ml", "Conteúdo do frasco (ml)", { tipo: "number", ph: "50" })}
+        ${campo("md-car", "Carência para abate (dias)", { tipo: "number", modo: "numeric", passo: 1, ph: "opcional. Ex.: 35", hint: "Está na bula. O sistema avisa na saída para abate." })}
       </div>
       <p class="note" id="md-conta"></p>
       <div class="actions"><button class="btn" type="submit">Cadastrar medicamento</button></div>
@@ -230,7 +305,7 @@ TELAS["sanidade/medicamentos"] = {
       if (preco == null || preco < 0) e.push(["md-preco", "Informe o preço do frasco."]);
       if (!ml || ml <= 0) e.push(["md-ml", "Informe quantos ml vêm no frasco."]);
       if (!erros(f, e)) return;
-      store.gravar([{ tipo: "set", col: "meds", id: store.novoId(), dados: { nome, precos: [{ desde: hoje(), preco, ml }] } }]);
+      store.gravar([{ tipo: "set", col: "meds", id: store.novoId(), dados: { nome, carencia: Math.round(num(val("md-car")) || 0) || null, precos: [{ desde: hoje(), preco, ml }] } }]);
       toast(`${nome} cadastrado. ${msgSalvo()}`);
       f.reset(); conta();
     };
@@ -241,17 +316,17 @@ TELAS["sanidade/medicamentos"] = {
     return `<section class="card"><div class="sec-h"><h3>Medicamentos cadastrados</h3><span class="note">${ms.length}</span></div>
     <div class="rows">${ms.map((m) => {
       const v = vigente(m.precos, hoje());
-      return `<div class="item"><div class="ih"><div><b>${esc(m.nome)}</b><div class="note">${v ? `frasco de ${n0(v.ml)} ml por ${rs(v.preco)}` : "sem preço"}</div></div>
+      return `<div class="item"><div class="ih"><div><b>${esc(m.nome)}</b><div class="note">${v ? `frasco de ${n0(v.ml)} ml por ${rs(v.preco)}` : "sem preço"} · ${m.carencia > 0 ? `carência de ${m.carencia} dias para abate` : "sem carência informada"}</div></div>
         <div style="text-align:right"><span class="mono">${rs(precoMl(m, hoje()))}/ml</span></div></div>
         ${histPrecos(m.precos, fmtPrecoMed)}
-        <details class="mais"><summary>Lançar preço novo ou corrigir o nome</summary>
+        <details class="mais"><summary>Lançar preço novo, corrigir o nome ou a carência</summary>
           <form class="rowf" data-preco="${m.id}" novalidate>
             ${campo("mp-p-" + m.id, "Novo preço do frasco (R$)", { tipo: "number" })}${campo("mp-m-" + m.id, "Conteúdo (ml)", { tipo: "number", v: v ? v.ml : "" })}${campoData("mp-d-" + m.id, "Vale a partir de")}
             <button class="btn ghost sm" type="submit">Salvar preço novo</button></form>
           <p class="note" style="margin:8px 0">O preço novo vale só da data informada em diante. O que foi aplicado antes continua com o preço antigo.</p>
           <form class="rowf" data-edit="${m.id}" novalidate>
-            ${campo("me-n-" + m.id, "Nome", { v: m.nome })}
-            <button class="btn ghost sm" type="submit">Salvar nome</button>
+            ${campo("me-n-" + m.id, "Nome", { v: m.nome })}${campo("me-c-" + m.id, "Carência para abate (dias)", { tipo: "number", modo: "numeric", passo: 1, v: m.carencia })}
+            <button class="btn ghost sm" type="submit">Salvar cadastro</button>
             <button class="mini danger" type="button" data-excluir="${m.id}" data-confirm="Confirmar exclusão">Excluir medicamento</button></form>
         </details></div>`;
     }).join("")}</div></section>`;
@@ -275,8 +350,8 @@ TELAS["sanidade/medicamentos"] = {
         ev.preventDefault();
         const id = f.dataset.edit, nome = val("me-n-" + id);
         if (!erros(f, nome ? [] : [["me-n-" + id, "Informe o nome."]])) return;
-        store.gravar([{ tipo: "update", col: "meds", id, dados: { nome } }]);
-        toast("Nome atualizado.");
+        store.gravar([{ tipo: "update", col: "meds", id, dados: { nome, carencia: Math.round(num(val("me-c-" + id)) || 0) || null } }]);
+        toast("Cadastro do medicamento atualizado.");
       };
     });
     $$("[data-excluir]").forEach((b) => confirmar(b, () => {

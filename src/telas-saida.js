@@ -1,16 +1,16 @@
 // Saída: abate ou venda viva, com o fechamento do lote (custos, receita e resultado) e o histórico.
 import {
-  store, S, M, $, esc, d2, n0, n1, n3, rs, num, fmtGmd, tagLote, toast, msgSalvo, erros, ativos, lotePorId,
-  opcoesLotes, campo, campoData, sel, seg, val, marcado, TELAS, hoje,
+  store, S, M, $, esc, d2, n0, n1, n2, n3, rs, num, fmtGmd, tagLote, toast, msgSalvo, erros, ativos, lotePorId,
+  opcoesLotes, campo, campoData, sel, seg, val, marcado, TELAS, hoje, pct,
 } from "./base.js";
-import { modelo, fechamento, pesagensDoLote } from "./calc.js";
+import { modelo, fechamento, pesagensDoLote, carenciasAbertas } from "./calc.js";
 import { blocoCustos, blocoFechamento } from "./drawer.js";
 
 function lerSaida() {
   const tipo = marcado("x-tipo") === "vivo" ? "vivo" : "abate";
   const rr = val("x-rreal");
   return {
-    tipo, data: val("x-data"), destino: val("x-dest"), peso: num(val("x-peso")), obs: val("x-obs"),
+    tipo, data: val("x-data"), destino: val("x-dest"), peso: num(val("x-peso")), obs: val("x-obs"), gta: val("x-gta"), nf: val("x-nf"),
     precoArroba: tipo === "abate" ? num(val("x-arroba")) : null,
     rendEsp: tipo === "abate" ? num(val("x-rend")) : null,
     rendReal: tipo === "abate" && rr !== "" ? num(rr) : null,
@@ -34,7 +34,9 @@ function calcSaida() {
   s.quantidade = l.quantidade;
   const semPeso = !s.peso;
   if (semPeso) s.peso = null;
+  const car = s.tipo === "abate" ? carenciasAbertas(S.db, l, s.data) : [];
   box.innerHTML = `
+    ${car.length ? `<div class="banner bad" id="x-carencia" style="margin-bottom:14px"><span><b>Atenção: o lote ainda está em carência para abate até ${d2(car[0].livre)}.</b> ${car.map((x) => `${esc(x.med)}, aplicado em ${d2(x.aplicado)}, tem carência de ${x.carencia} dias e libera em ${d2(x.livre)} (faltam ${x.faltam})`).join(" · ")}. O sistema deixa registrar a saída, mas o frigorífico pode recusar os animais.</span></div>` : ""}
     <div class="sec-h"><h3>Fechamento do lote ${esc(l.numero)}</h3><span class="note">${r.dias} dias na fazenda · peso estimado na data: ${n0(r.peso)} kg</span></div>
     ${blocoCustos(r.custos, r.total || 1)}
     <div style="height:12px"></div>
@@ -56,6 +58,8 @@ TELAS["saida/saida"] = {
         <div class="f" data-so="abate"><label for="x-rend">Rendimento de carcaça esperado (%)</label><input id="x-rend" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" value="52"></div>
         <div class="f" data-so="abate"><label for="x-rreal">Rendimento real (%)</label><input id="x-rreal" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="opcional, quando chegar o romaneio"><span class="hint">Pode lançar depois, no histórico</span></div>
         <div class="f" data-so="vivo" hidden><label for="x-kg">Preço do kg vivo (R$/kg)</label><input id="x-kg" type="number" inputmode="decimal" step="any" min="0" autocomplete="off" placeholder="11"></div>
+        ${campo("x-gta", "Número da GTA", { ph: "opcional" })}
+        ${campo("x-nf", "Número da nota fiscal", { ph: "opcional" })}
         ${campo("x-obs", "Observações", { ph: "opcional", full: true })}
       </div>
       <section id="x-fech" aria-live="polite"></section>
@@ -97,7 +101,7 @@ TELAS["saida/saida"] = {
       const r = modelo(S.db, s.data).lote(l.id), fe = fechamento(r, dados);
       store.gravar([{ tipo: "set", col: "saidas", id: store.novoId(), dados }, { tipo: "update", col: "lotes", id: l.id, dados: { ativo: false } }]);
       toast(`Saída do ${l.numero} registrada. Resultado: ${rs(fe.resultado, 0)}. ${msgSalvo()}`);
-      for (const id of ["x-dest", "x-peso", "x-pesot", "x-arroba", "x-rreal", "x-kg", "x-obs"]) $("#" + id).value = "";
+      for (const id of ["x-dest", "x-peso", "x-pesot", "x-arroba", "x-rreal", "x-kg", "x-obs", "x-gta", "x-nf"]) $("#" + id).value = "";
       sugerir(); calcSaida();
     };
   },
@@ -114,6 +118,9 @@ TELAS["saida/historico"] = {
     if (!linhas.length) return `<section class="card"><h3>Nenhuma saída registrada</h3><p class="note" style="margin:8px 0 14px">Quando um lote sair para abate ou venda, o fechamento dele fica guardado aqui.</p><div class="actions"><button class="btn" type="button" data-act="ir" data-to="saida/saida">Registrar saída</button></div></section>`;
     const com = linhas.filter((x) => x.f && x.f.resultado != null);
     const receita = com.reduce((t, x) => t + x.f.receita, 0), custo = com.reduce((t, x) => t + x.f.custoTotal, 0), cab = com.reduce((t, x) => t + (x.s.quantidade || x.r.lote.quantidade), 0);
+    const arrProd = com.reduce((t, x) => t + (x.f.arrobasProd || 0), 0), prod = com.reduce((t, x) => t + x.f.producao, 0), aquis = com.reduce((t, x) => t + x.r.custos.aquisicao, 0);
+    const pesoRent = com.filter((x) => x.f.rentabMes != null).reduce((t, x) => t + x.r.custos.aquisicao, 0);
+    const rentMes = pesoRent ? com.filter((x) => x.f.rentabMes != null).reduce((t, x) => t + x.f.rentabMes * x.r.custos.aquisicao, 0) / pesoRent : null;
     const tipo = (s) => (s.tipo === "abate" ? "Abate" : s.tipo === "vivo" ? "Venda viva" : s.motivo || "Saída");
     const semReal = linhas.filter((x) => x.s.tipo === "abate" && (x.s.rendReal == null || x.s.rendReal === ""));
     return `
@@ -122,13 +129,18 @@ TELAS["saida/historico"] = {
       <div class="card kpi"><span class="label">Receita</span><span class="v">${rs(receita, 0)}</span><span class="s">${com.length} ${com.length === 1 ? "lote" : "lotes"} · ${n0(cab)} cabeças</span></div>
       <div class="card kpi"><span class="label">Custo total</span><span class="v">${rs(custo, 0)}</span><span class="s">compra, pasto, trato, sanidade e rateios</span></div>
       <div class="card kpi"><span class="label">Margem</span><span class="v">${receita ? n1(((receita - custo) / receita) * 100) : "—"}<small>%</small></span><span class="s">resultado ÷ receita</span></div>
+      <div class="card kpi"><span class="label">Arrobas produzidas</span><span class="v">${n0(arrProd)} <small>@</small></span><span class="s">saída menos entrada, em carcaça</span></div>
+      <div class="card kpi"><span class="label">Custo por @ produzida</span><span class="v">${arrProd > 0 ? rs(prod / arrProd, 0) : "—"}</span><span class="s">custo de produção, sem a compra</span></div>
+      <div class="card kpi"><span class="label">Rentabilidade</span><span class="v">${aquis ? n1(((receita - custo) / aquis) * 100) : "—"}<small>%</small></span><span class="s">resultado ÷ valor da compra</span></div>
+      <div class="card kpi"><span class="label">Rentabilidade ao mês</span><span class="v">${rentMes == null ? "—" : n2(rentMes)}<small>%</small></span><span class="s">média dos lotes, pelo valor da compra</span></div>
     </section>` : ""}
     ${semReal.length ? `<div class="banner"><span><b>Falta o rendimento real de ${semReal.length === 1 ? "1 abate" : semReal.length + " abates"}:</b> ${semReal.map((x) => esc(x.r ? x.r.lote.numero : "?")).join(", ")}. Enquanto não lançar, vale o rendimento esperado.</span></div>` : ""}
     <section class="card"><div class="sec-h"><h3>Histórico de saídas</h3><span class="note">toque na linha para ver o fechamento e lançar o rendimento real</span></div>
-    <div class="tw"><table><thead><tr><th>Data</th><th>Lote</th><th>Tipo</th><th>Destino</th><th class="r">Cab.</th><th class="r">Peso</th><th class="r">Dias</th><th class="r">GMD</th><th class="r">Receita</th><th class="r">Custo</th><th class="r">Resultado</th></tr></thead><tbody>
+    <div class="tw"><table><thead><tr><th>Data</th><th>Lote</th><th>Tipo</th><th>Destino</th><th class="r">Cab.</th><th class="r">Peso</th><th class="r">Dias</th><th class="r">GMD</th><th class="r">Receita</th><th class="r">Custo</th><th class="r">Resultado</th><th class="r">@ produzidas</th><th class="r">Custo/@ prod.</th><th class="r">Rentab.</th><th>Documentos</th></tr></thead><tbody>
     ${linhas.map(({ s, r, f }) => `<tr class="click" data-act="lote" data-id="${s.loteId}"><td>${d2(s.data)}</td><td>${tagLote(r ? r.lote : null)}</td><td>${esc(tipo(s))}</td><td>${esc(s.destino || "—")}</td>
       <td class="r">${s.quantidade || (r ? r.lote.quantidade : "—")}</td><td class="r">${s.peso ? n0(s.peso) + " kg" : "—"}</td><td class="r">${r ? r.dias : "—"}</td><td class="r">${f ? fmtGmd(f.gmdPeriodo) : "—"}</td>
-      <td class="r">${f ? rs(f.receita, 0) : "—"}</td><td class="r">${r ? rs(r.total, 0) : "—"}</td><td class="r"><b class="${!f || f.resultado == null ? "" : f.resultado >= 0 ? "pos" : "neg"}">${f ? rs(f.resultado, 0) : "—"}</b></td></tr>`).join("")}
+      <td class="r">${f ? rs(f.receita, 0) : "—"}</td><td class="r">${r ? rs(r.total, 0) : "—"}</td><td class="r"><b class="${!f || f.resultado == null ? "" : f.resultado >= 0 ? "pos" : "neg"}">${f ? rs(f.resultado, 0) : "—"}</b></td>
+      <td class="r">${f && f.arrobasProd != null ? n1(f.arrobasProd) : "—"}</td><td class="r">${f ? rs(f.custoArrobaProd) : "—"}</td><td class="r">${f ? pct(f.rentab) : "—"}${f && f.rentabMes != null ? `<div class="note">${n2(f.rentabMes)}% ao mês</div>` : ""}</td><td>${esc([s.gta && "GTA " + s.gta, s.nf && "NF " + s.nf].filter(Boolean).join(" · ")) || "—"}</td></tr>`).join("")}
     </tbody></table></div></section>`;
   },
 };

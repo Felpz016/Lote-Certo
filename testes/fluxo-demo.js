@@ -52,7 +52,8 @@ const ok = (c, m) => console.log((c ? 'OK  ' : 'FALHOU ') + m);
 
   await ir('trato/dia'); let t = await txt();
   // peso estimado hoje: 300 + 10 dias × 1 kg = 310 kg; consumo 10 × 310 × 1% = 31 kg
-  ok(/31 kg/.test(t) && t.includes('3,1 kg'), 'trato do dia: 31 kg no cocho, 3,1 kg de farelo de amendoim (10%)');
+  // dieta em matéria seca: 31 kg de MS ÷ 88,2% de MS da dieta = 35 kg no vagão, 10% de farelo = 3,5 kg
+  ok(/31 kg de MS/.test(t) && /\b35 kg/.test(t) && t.includes('3,5 kg'), 'trato do dia: 31 kg de matéria seca viram 35 kg no vagão, 3,5 kg de farelo de amendoim');
 
   await ir('sanidade/protocolo');
   await p.fill('#s-data', dia(8)); await p.selectOption('#s-med-0', { label: 'Ivermectina' }); await p.fill('#s-ml-0', '5');
@@ -103,6 +104,61 @@ const ok = (c, m) => console.log((c ? 'OK  ' : 'FALHOU ') + m);
   await p.click('#fechaLote');
   await ir('painel'); ok(/nenhum lote na fazenda/i.test(await txt()), 'lote saiu dos ativos');
 
+  // ---------- melhorias: peso de compra, peso-alvo, morte, capacidade, calendário, fornecimento real, financeiro e perfis
+  await ir('pasto/cadastro');
+  await p.fill('#pa-nome', 'Pasto C'); await p.fill('#pa-area', '5'); await p.fill('#pa-custo', '365'); await p.fill('#pa-cap', '2'); await p.click('#fPasto button[type=submit]'); await p.waitForTimeout(200);
+  await ir('lotes/entrada');
+  await p.fill('#e-data', dia(20)); await p.fill('#e-qtd', '20'); await p.fill('#e-peso', '300'); await p.fill('#e-pcompra', '310'); await p.fill('#e-ckg', '10');
+  await p.fill('#e-raca', 'Nelore'); await p.fill('#e-alvo', '400'); await p.fill('#e-gta', 'SP-1'); await p.fill('#e-nf', '77'); await p.selectOption('#e-pasto', { label: 'Pasto C' }); await p.selectOption('#e-dieta', { label: 'Dieta 1%' }); await p.fill('#e-gmd', '1');
+  t = (await p.textContent('#e-calc')).replace(/\s+/g, ' ');
+  // a compra paga o peso da origem: 20 × 310 × 10 = R$ 62.000; quebra de (310 − 300) ÷ 310 = 3,2%
+  ok(t.includes('62.000') && t.includes('3,2%'), 'peso de compra: aquisição de R$ 62.000 sobre 310 kg e quebra de 3,2%');
+  await p.click('#fEnt button[type=submit]'); await p.waitForTimeout(300);
+  await ir('lotes/ativos'); t = await txt();
+  // peso estimado hoje 300 + 20 = 320 kg; faltam 80 kg a 1 kg/dia = 80 dias
+  ok(t.includes('alvo 400 kg: ' + dia(-80).split('-').reverse().join('/')), 'peso-alvo de 400 kg: previsto para daqui a 80 dias');
+  await ir('painel'); t = await txt();
+  // 20 cab × 320 kg ÷ 450 = 14,2 UA em 5 ha = 2,84 UA/ha, acima da capacidade de 2
+  ok(/acima da capacidade/i.test(t), 'painel avisa pasto acima da capacidade');
+  await ir('lotes/mortes');
+  await p.fill('#mo-data', dia(5)); await p.fill('#mo-qtd', '1'); await p.fill('#mo-causa', 'Raio'); await p.click('#fMorte button[type=submit]'); await p.waitForTimeout(300);
+  t = await txt(); ok(t.includes('Raio') && /5,0\s?%/.test(t), 'morte lançada: 1 de 20 cabeças = mortalidade de 5,0%');
+  await ir('lotes/ativos'); await p.click('[data-act=lote]:visible'); await p.waitForSelector('.drawer'); t = await p.textContent('.drawer');
+  ok(t.includes('62.000,00'), 'depois da morte o custo de aquisição continua R$ 62.000 no lote');
+  ok(/empata/i.test(t), 'gaveta do lote mostra a projeção com o preço que empata');
+  await p.click('#fechaLote');
+  await ir('sanidade/calendario');
+  await p.fill('#ag-data', dia(2)); await p.fill('#ag-desc', 'Vacina aftosa'); await p.click('#fAg button[type=submit]'); await p.waitForTimeout(200);
+  await ir('painel'); t = await txt(); ok(t.includes('Vacina aftosa') && /atrasado/i.test(t), 'painel mostra o manejo sanitário atrasado');
+  await ir('trato/real');
+  await p.fill('#fr-data', dia(1)); await p.fill('#fr-kg', '100'); await p.fill('#fr-sobra', '10');
+  t = (await p.textContent('#fr-calc')).replace(/\s+/g, ' ');
+  // fornecido 100 kg × R$ 1,100 = R$ 110,00
+  ok(t.includes('110,00'), 'fornecimento real: 100 kg × R$ 1,100 = R$ 110,00');
+  await p.click('#fReal button[type=submit]'); await p.waitForTimeout(200);
+  for (const aba of ['geral', 'lotes', 'areas', 'projecao', 'relatorios']) { await ir('financeiro/' + aba); }
+  await ir('financeiro/geral'); t = await txt();
+  ok((await p.locator('.graf').count()) >= 3 && t.includes('R$ 59,4 mil') && t.includes('R$ 26.965'), 'financeiro: gráficos, receita de R$ 59,4 mil e resultado do lote vendido');
+  await ir('financeiro/lotes'); t = await txt();
+  ok(t.includes('58.320') || t.includes('59.400'), 'financeiro por lote mostra a receita do lote vendido');
+  await ir('financeiro/projecao'); t = await txt();
+  ok(/Preço que empata/i.test(t) && t.includes('002'), 'projeção de venda do lote 002');
+  await ir('financeiro/relatorios'); t = await txt();
+  ok(t.includes('Pasto C') && /Demonstrativo/i.test(t), 'relatórios: comparativo por pasto e demonstrativo mês a mês');
+  await ir('conta'); t = await txt();
+  ok(/Registro de alterações|Correções e exclusões/i.test(t) && /Importar/i.test(t), 'conta: registro de alterações e importação de planilha');
+
+  // perfil campo: sem financeiro, sem custos e sem valores em dinheiro
+  const pc = await c.newPage();
+  pc.on('pageerror', (e) => console.log('ERR campo', e.message));
+  await pc.goto('http://localhost:8080/app/?demo&perfil=campo#painel'); await pc.waitForSelector('.tabbar');
+  const tc = await pc.evaluate(() => document.body.innerText);
+  await pc.evaluate(() => { location.hash = 'financeiro/geral'; }); await pc.waitForTimeout(300);
+  const tf = await pc.evaluate(() => document.querySelector('.content').innerText);
+  ok(!/R\$ ?\d/.test(tc) && !/R\$ ?\d/.test(tf) && !(await pc.locator('.graf').count()), 'perfil campo não vê valores nem o financeiro');
+  await pc.close();
+
+  await ir('painel');
   const [dl] = await Promise.all([p.waitForEvent('download', { timeout: 20000 }), p.click('.hero [data-act=excel]')]);
   const arq = require('os').tmpdir() + '/lote-certo-teste.xlsx'; await dl.saveAs(arq);
   ok(fs.statSync(arq).size > 8000, 'planilha Excel baixada (' + fs.statSync(arq).size + ' bytes)');

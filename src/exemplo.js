@@ -7,16 +7,16 @@ export function exemplo() {
   const mes = (n) => d(n).slice(0, 7);
 
   const pastos = [
-    { id: "pa1", nome: "Pasto 1", area: 20, capim: "Braquiária brizantha", piquetes: "1A, 1B", precos: [{ desde: d(150), valor: 730 }] },
-    { id: "pa2", nome: "Pasto 2", area: 35, capim: "Mombaça", piquetes: "", precos: [{ desde: d(133), valor: 820 }, { desde: d(60), valor: 900 }] },
-    { id: "pa3", nome: "Pasto 3", area: 28, capim: "Braquiária decumbens", piquetes: "", precos: [{ desde: d(200), valor: 650 }] },
-    { id: "pa4", nome: "Pasto 4", area: 15, capim: "Tifton 85", piquetes: "", precos: [{ desde: d(297), valor: 1100 }] },
+    { id: "pa1", nome: "Pasto 1", area: 20, capim: "Braquiária brizantha", piquetes: "1A, 1B", capacidade: 1.8, precos: [{ desde: d(150), valor: 730 }] },
+    { id: "pa2", nome: "Pasto 2", area: 35, capim: "Mombaça", piquetes: "", capacidade: 2.5, precos: [{ desde: d(133), valor: 820 }, { desde: d(60), valor: 900 }] },
+    { id: "pa3", nome: "Pasto 3", area: 28, capim: "Braquiária decumbens", piquetes: "", capacidade: 1.2, precos: [{ desde: d(200), valor: 650 }] },
+    { id: "pa4", nome: "Pasto 4", area: 15, capim: "Tifton 85", piquetes: "", capacidade: 3, precos: [{ desde: d(297), valor: 1100 }] },
   ];
   const meds = [
-    { id: "m1", nome: "Ivermectina 1%", precos: [{ desde: d(320), preco: 30, ml: 50 }, { desde: d(30), preco: 35, ml: 50 }] },
-    { id: "m2", nome: "Vacina clostridiose", precos: [{ desde: d(320), preco: 62, ml: 100 }] },
+    { id: "m1", nome: "Ivermectina 1%", carencia: 35, precos: [{ desde: d(320), preco: 30, ml: 50 }, { desde: d(30), preco: 35, ml: 50 }] },
+    { id: "m2", nome: "Vacina clostridiose", carencia: 21, precos: [{ desde: d(320), preco: 62, ml: 100 }] },
     { id: "m3", nome: "Vacina aftosa", precos: [{ desde: d(320), preco: 85, ml: 100 }] },
-    { id: "m4", nome: "Oxitetraciclina LA", precos: [{ desde: d(320), preco: 48, ml: 50 }] },
+    { id: "m4", nome: "Oxitetraciclina LA", carencia: 28, precos: [{ desde: d(320), preco: 48, ml: 50 }] },
   ];
   const ingredientes = [
     { id: "i1", nome: "Milho moído", ms: 88, precos: [{ desde: d(320), valor: 1100 }, { desde: d(45), valor: 1180 }] },
@@ -27,7 +27,7 @@ export function exemplo() {
   ];
   const dietas = [
     { id: "dt1", nome: "Recria 1%", versoes: [{ desde: d(320), pv: 1, itens: [{ ingId: "i1", pct: 60 }, { ingId: "i2", pct: 25 }, { ingId: "i3", pct: 10 }, { ingId: "i4", pct: 5 }] }] },
-    { id: "dt2", nome: "Terminação 2%", versoes: [{ desde: d(320), pv: 2, itens: [{ ingId: "i5", pct: 50 }, { ingId: "i1", pct: 35 }, { ingId: "i2", pct: 12 }, { ingId: "i4", pct: 3 }] }] },
+    { id: "dt2", nome: "Terminação 2%", versoes: [{ desde: d(320), pv: 2, base: "ms", itens: [{ ingId: "i5", pct: 50 }, { ingId: "i1", pct: 35 }, { ingId: "i2", pct: 12 }, { ingId: "i4", pct: 3 }] }] },
   ];
 
   const lotes = [], movs = [], tratos = [];
@@ -36,14 +36,14 @@ export function exemplo() {
     movs.push({ id: "mv-" + id, loteId: id, data: d(dias), pastoId: x.pasto, piquete: x.piquete || "", inicial: true });
     tratos.push({ id: "tr-" + id, loteId: id, data: d(dias), dietaId: x.dieta || null, inicial: true });
   };
-  L("l09", "009", 40, "M", "Nelore", 13, 270, 297, { pasto: "pa4", lote: { custoKg: 10.8, comissao: 1000, frete: 1500, origem: "Fazenda Santa Luzia", gmdEst: 0.7, ativo: false } });
+  L("l09", "009", 40, "M", "Nelore", 13, 270, 297, { pasto: "pa4", lote: { custoKg: 10.8, comissao: 1000, frete: 1500, origem: "Fazenda Santa Luzia", gmdEst: 0.7, ativo: false, pesoCompra: 281, gta: "SP-482.117", nf: "1.204" } });
   L("l10", "010", 30, "M", "Nelore", 12, 250, 200, { pasto: "pa3", lote: { custoKg: 11, comissao: 800, frete: 1200, origem: "Leilão de Araçatuba", gmdEst: 0.6, ativo: false, apartadoEm: d(60), criterio: "Peso: acima e abaixo de 330 kg" } });
-  L("l10a", "010/1", 18, "M", "Nelore", 17, 348, 60, { pasto: "pa3", dieta: "dt2", lote: { custoKg: null, gmdEst: 1.1, origemId: "l10", criterio: "Peso: acima e abaixo de 330 kg" } });
+  L("l10a", "010/1", 18, "M", "Nelore", 17, 348, 60, { pasto: "pa3", dieta: "dt2", lote: { custoKg: null, gmdEst: 1.1, pesoAlvo: 520, origemId: "l10", criterio: "Peso: acima e abaixo de 330 kg" } });
   L("l10b", "010/2", 12, "M", "Nelore", 17, 302, 60, { pasto: "pa2", lote: { custoKg: null, gmdEst: 0.6, origemId: "l10", criterio: "Peso: acima e abaixo de 330 kg" } });
   L("l11", "011", 25, "F", "Nelore", 11, 240, 260, { pasto: "pa3", lote: { custoKg: 10.5, frete: 700, origem: "Sítio Boa Vista", gmdEst: 0.5, ativo: false, obs: "Novilhas para venda." } });
-  L("l12", "012", 48, "M", "Nelore", 12, 262, 150, { pasto: "pa1", piquete: "1A", dieta: "dt1", lote: { custoKg: 11.5, comissao: 1200, frete: 1800, origem: "Sítio Boa Vista", gmdEst: 0.6 } });
-  L("l13", "013", 35, "F", "Nelore", 10, 236, 133, { pasto: "pa2", lote: { custoKg: 10.2, frete: 900, origem: "Sítio Boa Vista", gmdEst: 0.5 } });
-  L("l14", "014", 60, "M", "Cruzado (Angus × Nelore)", 14, 301, 95, { pasto: "pa2", lote: { custoKg: 12.1, comissao: 2500, frete: 3200, origem: "Leilão de Araçatuba", gmdEst: 0.8, obs: "Lote de terminação." } });
+  L("l12", "012", 47, "M", "Nelore", 12, 262, 150, { pasto: "pa1", piquete: "1A", dieta: "dt1", lote: { custoKg: 11.5, comissao: 1200, frete: 1800, origem: "Sítio Boa Vista", gmdEst: 0.6, qtdEntrada: 48, pesoCompra: 271, pesoAlvo: 420, gta: "SP-501.336", nf: "2.018" } });
+  L("l13", "013", 35, "F", "Nelore", 10, 236, 133, { pasto: "pa2", lote: { custoKg: 10.2, frete: 900, origem: "Sítio Boa Vista", gmdEst: 0.5, pesoAlvo: 360 } });
+  L("l14", "014", 60, "M", "Cruzado (Angus × Nelore)", 14, 301, 95, { pasto: "pa2", lote: { custoKg: 12.1, comissao: 2500, frete: 3200, origem: "Leilão de Araçatuba", gmdEst: 0.8, obs: "Lote de terminação.", qtdEntrada: 61, pesoCompra: 312, pesoAlvo: 540, gta: "SP-517.902", nf: "880" } });
   L("l15", "015", 22, "F", "Brahman", 24, 378, 69, { pasto: "pa1", piquete: "1B", lote: { custoKg: 9.8, frete: 600, origem: "Fazenda Santa Luzia", gmdEst: 0.4, obs: "Novilhas." } });
 
   return {
@@ -88,9 +88,25 @@ export function exemplo() {
       { id: "s13", loteId: "l13", data: d(41), tipo: "tratamento", doenca: "Pneumonia", medId: "m4", ml: 20, animais: 1 },
     ],
     saidas: [
-      { id: "x1", loteId: "l09", data: d(44), tipo: "abate", destino: "Frigorífico São Luís", peso: 512, quantidade: 40, precoArroba: 315, rendEsp: 52, rendReal: 53.4, precoKg: null, obs: "" },
+      { id: "x1", loteId: "l09", data: d(44), tipo: "abate", destino: "Frigorífico São Luís", peso: 512, quantidade: 40, precoArroba: 315, rendEsp: 52, rendReal: 53.4, precoKg: null, obs: "", gta: "SP-533.870", nf: "1.377" },
       { id: "x2", loteId: "l11", data: d(20), tipo: "vivo", destino: "Fazenda Três Irmãos", peso: 372, quantidade: 25, precoArroba: null, rendEsp: null, rendReal: null, precoKg: 12.4, obs: "Venda para recria." },
     ],
+    mortes: [
+      { id: "mo1", loteId: "l12", data: d(101), cabecas: 1, causa: "Picada de cobra", obs: "" },
+      { id: "mo2", loteId: "l14", data: d(88), cabecas: 1, causa: "Acidente no transporte", obs: "Chegou machucado." },
+    ],
+    agenda: [
+      { id: "ag1", loteId: "l13", data: d(3), descricao: "Reforço: Vacina clostridiose", feito: false },
+      { id: "ag2", loteId: "l15", data: d(-9), descricao: "Vacina aftosa", feito: false },
+      { id: "ag3", loteId: "l12", data: d(-25), descricao: "Vermífugo", feito: false },
+      { id: "ag4", loteId: "l14", data: d(64), descricao: "Reforço: Vacina aftosa", feito: true, feitoEm: d(64) },
+    ],
+    fornecimentos: [
+      ...[1, 2, 3, 4, 5, 6, 7].map((n) => ({ id: "fo" + n, loteId: "l14", data: d(n), kg: 1150 + ((n * 37) % 90), sobra: (n * 13) % 40 })),
+      ...[1, 2, 3].map((n) => ({ id: "fa" + n, loteId: "l10a", data: d(n), kg: 400 + n * 6, sobra: 10 })),
+    ],
+    config: [{ id: "geral", precoArroba: 320, rendSaida: 52, rendEntrada: 50 }],
+    log: [],
     custos: [
       { id: "c1", tipo: "fixo", descricao: "Salário do vaqueiro", categoria: "Funcionário", valor: 3200, mes: mes(320), recorrente: true },
       { id: "c2", tipo: "fixo", descricao: "Diesel do trator", categoria: "Diesel", valor: 900, mes: mes(320), recorrente: true },
