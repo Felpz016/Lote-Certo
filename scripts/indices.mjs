@@ -29,7 +29,10 @@ const log = (...a) => console.log(...a);
 // ------------------------------------------------------------ cotações
 /** Dólar comercial (venda), série do Banco Central. */
 async function dolar() {
-  const j = await baixar("https://api.bcb.gov.br/dados/serie/bcdata.sgs.1/dados/ultimos/130?formato=json", "json");
+  // A API só aceita "ultimos" até 20; para a série do gráfico pede o período (cerca de 6 meses).
+  const br = (t) => new Date(t).toISOString().slice(0, 10).split("-").reverse().join("/");
+  const j = await baixar(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.1/dados?formato=json&dataInicial=${br(Date.now() - 190 * 864e5)}&dataFinal=${br(Date.now())}`, "json");
+  if (!Array.isArray(j)) throw new Error("resposta inesperada");
   return j.map((x) => ({ d: dataBr(x.data), v: +x.valor })).filter((x) => x.d && x.v > 0);
 }
 
@@ -114,7 +117,7 @@ const TEMAS = [
   ["politica", 2, /minist[ée]rio|governo|lei\b|imposto|funrural|tribut|mapa\b/],
   ["pecuaria", 2, /pecu[áa]ri|bovino|gado|rebanho|nelore|angus|abate|novilh/],
 ];
-const FORA = /su[íi]n|frango|ave[s]? |aves\b|leite|leiteir|caf[ée]\b|cana|algod|laranja|cacau|pescado|peixe|ovos?\b|hortali|flores|vinho|uva\b|banana/;
+const FORA = /su[íi]n|frango|(?<![a-zà-ú])aves?(?![a-zà-ú])|leite|caf[ée](?![a-zà-ú])|(?<![a-zà-ú])cana(?![a-zà-ú])|algod|laranja|cacau|pescado|peixe|(?<![a-zà-ú])ovos?(?![a-zà-ú])|hortali|flores|vinho|(?<![a-zà-ú])uvas?(?![a-zà-ú])|banana/;
 
 function itensRss(xml) {
   return [...xml.matchAll(/<item[\s\S]*?<\/item>/g)].map((m) => {
@@ -131,7 +134,7 @@ function pontuar(n, agora) {
     const t = re.test(tit), r = re.test(resto);
     if (t || r) { p += peso * (t ? 2 : 1); temas.push(k); }
   }
-  if (FORA.test(tit) && !/boi|bovin|gado|arroba|pecu/.test(tit)) p -= 12;
+  if (FORA.test(tit) && !/(?<![a-zà-ú])boi|arroba|gado de corte|carne bovina/.test(tit)) p -= 12;
   if (/v[oô]c[eê] viu|conhe[çc]a a hist[óo]ria|receita|curiosidade|famoso|vaca mais cara/i.test(tit)) p -= 6;
   const horas = (agora - Date.parse(n.data)) / 36e5;
   p -= horas / 12; // notícia de ontem perde 2 pontos para a de hoje
