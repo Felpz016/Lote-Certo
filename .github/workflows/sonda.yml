@@ -1,10 +1,10 @@
 name: Sonda de índices (temporário)
 
-# Só lê páginas públicas e mostra o que veio. Não usa segredos e não grava nada. Sai antes de ir para a main.
+# Teste do robô sem gravar nada (SECO=1) e sem segredos. Sai antes de ir para a main.
 on:
   push:
     branches: [claude/project-thread-eup04h]
-    paths: [scripts/sonda-indices.mjs, .github/workflows/sonda.yml]
+    paths: [scripts/indices.mjs, .github/workflows/sonda.yml]
 
 jobs:
   sonda:
@@ -16,4 +16,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: node scripts/sonda-indices.mjs
+      - run: SECO=1 node scripts/indices.mjs

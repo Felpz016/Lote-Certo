@@ -1,0 +1,36 @@
+name: Índices do dia
+
+# Busca a arroba e o milho na B3, o dólar no Banco Central e as notícias do agro, e grava em publico/indices.
+# Também apaga do registro de alterações as linhas com mais de 1 ano.
+# Roda às 7h (Brasília) todo dia e às 18h30 nos dias de pregão, para pegar o fechamento.
+on:
+  schedule:
+    - cron: "0 10 * * *"
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch:
+
+concurrency: indices
+
+jobs:
+  indices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      CONTA_DE_SERVICO: ${{ secrets.LOTE_CERTO_SERVICE_ACCOUNT }}
+      # A arroba por praça da Scot Consultoria só entra quando houver autorização dela:
+      # Settings → Secrets and variables → Actions → Variables → SCOT_AUTORIZADO = sim
+      SCOT: ${{ vars.SCOT_AUTORIZADO == 'sim' && '1' || '0' }}
+      TZ: America/Sao_Paulo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-save --no-package-lock firebase-admin@12
+      - name: Buscar e gravar
+        run: |
+          printf '%s' "$CONTA_DE_SERVICO" > "$RUNNER_TEMP/conta.json"
+          CHAVE="$RUNNER_TEMP/conta.json" node scripts/indices.mjs
+          rm -f "$RUNNER_TEMP/conta.json"

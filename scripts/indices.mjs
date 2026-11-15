@@ -1,14 +1,16 @@
 // Robô diário dos Índices do mercado. Roda pelo GitHub Actions (workflow "Índices do dia"), de manhã.
-// 1. Busca as cotações e as notícias do agro em fontes públicas.
+// 1. Busca as cotações (boi gordo e milho na bolsa B3, dólar no Banco Central) e as notícias do agro.
 // 2. Grava tudo num documento só, publico/indices, que todo assinante lê. O documento do dia anterior é
 //    trocado pelo novo, então nada se acumula. As séries dos gráficos guardam só os últimos 130 pregões.
 // 3. Limpa o registro de alterações: apaga as linhas com mais de 1 ano (pedido do usuário).
 // Se uma fonte falhar, o robô mantém o último dado real dela, com a data dele. Nunca inventa número.
 //   SECO=1   não grava nada, só mostra o que conseguiu buscar (para teste).
+//   SCOT=1   inclui a arroba por praça da Scot Consultoria (só com autorização dela).
 import { readFileSync } from "node:fs";
 
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 const SECO = process.env.SECO === "1";
+const SCOT = process.env.SCOT === "1"; // ligar só quando a Scot autorizar o uso das cotações dela
 const MAX_SERIE = 130, DIAS_NOTICIA = 4, MAX_NOTICIAS = 24, DIAS_LOG = 365;
 
 async function baixar(url, tipo = "text") {
@@ -31,7 +33,8 @@ async function dolar() {
   return j.map((x) => ({ d: dataBr(x.data), v: +x.valor })).filter((x) => x.d && x.v > 0);
 }
 
-/** Arroba por praça (Scot Consultoria): devolve { data, pracas: [{ praca, boi, vaca, novilha }] }. */
+/** Arroba por praça (Scot Consultoria): devolve { data, pracas: [{ praca, boi }] }.
+ *  Só roda com SCOT=1: a Scot pede autorização para reproduzir as cotações dela. */
 async function scotPracas() {
   const html = await baixar("https://www.scotconsultoria.com.br/cotacoes/boi-gordo/");
   const ts = tabelas(html);
@@ -41,9 +44,39 @@ async function scotPracas() {
   const pracas = [];
   for (const l of t) {
     const nums = l.slice(1).map(numBr).filter((v) => v != null && v > 50 && v < 1000);
-    if (l[0] && nums.length && !/boi gordo|pre.os|descontados|vista|funrural/i.test(l[0])) pracas.push({ praca: l[0], boi: nums[0] });
+    if (l[0] && nums.length && !/boi gordo|pre.os|descontados|vista|funrural|mercado/i.test(l[0])) pracas.push({ praca: l[0], boi: nums[0] });
   }
-  return { data, pracas, bruto: t };
+  return { data, pracas };
+}
+
+// Bolsa B3: boi gordo (BGI) e milho Campinas (CCM). Preço do último negócio de cada vencimento.
+const LETRA = "FGHJKMNQUVXZ", MES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const B3 = "https://cotacao.b3.com.br/mds/api/v1";
+/** Os próximos vencimentos a partir do mês atual: [{ symb: "BGIX26", mes: "nov/26" }, ...]. */
+function vencimentos(raiz, n) {
+  const h = new Date(Date.now() - 3 * 36e5); // horário de Brasília
+  return Array.from({ length: n }, (_, i) => {
+    const m = (h.getUTCMonth() + i) % 12, a = h.getUTCFullYear() + Math.floor((h.getUTCMonth() + i) / 12);
+    return { symb: `${raiz}${LETRA[m]}${String(a).slice(2)}`, mes: `${MES[m]}/${String(a).slice(2)}` };
+  });
+}
+async function contratoB3({ symb, mes }) {
+  const j = await baixar(`${B3}/InstrumentQuotation/${symb}`, "json");
+  const t = (j.Trad || [])[0], q = t && t.scty && t.scty.SctyQtn;
+  if (!q || !(q.curPrc > 0)) return null;
+  return { symb, mes, v: q.curPrc, var: typeof q.prcFlcn === "number" ? q.prcFlcn : null, negocios: t.ttlQty || 0 };
+}
+/** Curva de preços por vencimento e a data do pregão. O primeiro vencimento com negócio é a referência. */
+async function curvaB3(raiz, meses, quantos) {
+  const curva = [];
+  for (const c of vencimentos(raiz, meses)) {
+    try { const x = await contratoB3(c); if (x) curva.push(x); } catch (e) { log(`  ${c.symb}: ${e.message}`); }
+    if (curva.length >= quantos) break;
+  }
+  if (!curva.length) throw new Error(`nenhum vencimento de ${raiz} com negócio`);
+  const h = await baixar(`${B3}/DailyFluctuationHistory/${curva[0].symb}`, "json").catch(() => null);
+  const data = (h && h.TradgFlr && /^\d{4}-\d{2}-\d{2}$/.test(h.TradgFlr.date) && h.TradgFlr.date) || new Date(Date.now() - 3 * 36e5).toISOString().slice(0, 10);
+  return { data, curva };
 }
 
 /** Mantém a série guardada e junta o valor novo (um ponto por dia). */
@@ -52,10 +85,11 @@ function juntar(serieAntiga = [], novos = []) {
   for (const p of novos) if (p.d && p.v != null) m.set(p.d, p.v);
   return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-MAX_SERIE).map(([d, v]) => ({ d, v }));
 }
-function cotacao(base, serie) {
+function cotacao(base, serie, varDia = null) {
   if (!serie.length) return null;
   const ult = serie[serie.length - 1], ant = serie[serie.length - 2], mes = serie.find((p) => p.d >= isoMenos(ult.d, 30)) || serie[0];
-  return { ...base, valor: ult.v, data: ult.d, var1d: ant ? ((ult.v - ant.v) / ant.v) * 100 : null, var30d: mes && mes !== ult ? ((ult.v - mes.v) / mes.v) * 100 : null, serie };
+  const var30d = mes && mes !== ult && mes.d <= isoMenos(ult.d, 20) ? ((ult.v - mes.v) / mes.v) * 100 : null;
+  return { ...base, valor: ult.v, data: ult.d, var1d: ant ? ((ult.v - ant.v) / ant.v) * 100 : varDia, var30d, serie };
 }
 const isoMenos = (iso, n) => new Date(Date.parse(iso + "T12:00:00Z") - n * 864e5).toISOString().slice(0, 10);
 
@@ -133,17 +167,27 @@ const falhas = [];
 const tentar = async (nome, f) => { try { return await f(); } catch (e) { falhas.push(`${nome}: ${e.message}`); log(`! ${nome}: ${e.message}`); return null; } };
 
 log("Cotações:");
-const pr = await tentar("praças (Scot)", scotPracas);
-if (pr) log(`  praças: ${pr.pracas.length} em ${pr.data}`, JSON.stringify(pr.pracas.slice(0, 4)));
-const sp = pr && pr.pracas.find((p) => /s[ãa]o paulo|^sp\b/i.test(p.praca));
-const serieArroba = juntar(velhas.arroba?.serie, sp && pr.data ? [{ d: pr.data, v: sp.boi }] : []);
-const serieDolar = (await tentar("dólar (Banco Central)", dolar)) || velhas.dolar?.serie || [];
-log(`  arroba SP: ${sp ? sp.boi : "—"} · dólar: ${serieDolar.length ? serieDolar[serieDolar.length - 1].v : "—"}`);
+const boi = await tentar("boi gordo (B3)", () => curvaB3("BGI", 14, 8));
+if (boi) log(`  boi B3 ${boi.data}:`, boi.curva.map((c) => `${c.mes} ${c.v}`).join(" · "));
+const milho = await tentar("milho (B3)", () => curvaB3("CCM", 14, 1));
+if (milho) log(`  milho B3 ${milho.data}:`, milho.curva.map((c) => `${c.mes} ${c.v}`).join(" · "));
+const pr = SCOT ? await tentar("praças (Scot)", scotPracas) : null;
+if (pr) log(`  praças Scot ${pr.data}: ${pr.pracas.length}`, JSON.stringify(pr.pracas.slice(0, 4)));
+const serieDolar = await tentar("dólar (Banco Central)", dolar);
+if (serieDolar) log(`  dólar: ${serieDolar[serieDolar.length - 1].v} em ${serieDolar[serieDolar.length - 1].d}`);
 
+const ref = boi && boi.curva[0], mil = milho && milho.curva[0];
 const cotacoes = [
-  cotacao({ k: "arroba", nome: "Boi gordo", praca: "São Paulo, à vista", unidade: "R$/@", fonte: "Scot Consultoria", dec: 2 }, serieArroba),
-  cotacao({ k: "dolar", nome: "Dólar", praca: "comercial, venda", unidade: "R$", fonte: "Banco Central", dec: 3 }, juntar(velhas.dolar?.serie, serieDolar)),
+  cotacao({ k: "arroba", nome: "Boi gordo", praca: ref ? `B3, vencimento ${ref.mes}` : velhas.arroba?.praca || "B3", unidade: "R$/@", fonte: "B3, último negócio", dec: 2 },
+    juntar(velhas.arroba?.serie, ref ? [{ d: boi.data, v: ref.v }] : []), ref ? ref.var : velhas.arroba?.var1d ?? null),
+  cotacao({ k: "milho", nome: "Milho", praca: mil ? `Campinas (SP), B3 ${mil.mes}` : velhas.milho?.praca || "Campinas (SP), B3", unidade: "R$/saca 60 kg", fonte: "B3, último negócio", dec: 2 },
+    juntar(velhas.milho?.serie, mil ? [{ d: milho.data, v: mil.v }] : []), mil ? mil.var : velhas.milho?.var1d ?? null),
+  cotacao({ k: "dolar", nome: "Dólar", praca: "comercial, venda", unidade: "R$", fonte: "Banco Central", dec: 3 }, juntar(velhas.dolar?.serie, serieDolar || [])),
 ].filter(Boolean);
+if (pr && pr.pracas.length) {
+  const sp = pr.pracas.find((p) => /s[ãa]o paulo|^sp\b/i.test(p.praca));
+  if (sp && pr.data) cotacoes.unshift(cotacao({ k: "fisico", nome: "Boi gordo físico", praca: sp.praca + ", à vista", unidade: "R$/@", fonte: "Scot Consultoria", dec: 2 }, juntar(velhas.fisico?.serie, [{ d: pr.data, v: sp.boi }])));
+}
 
 log("Notícias:");
 const nots = (await tentar("notícias", noticias)) || [];
@@ -152,27 +196,36 @@ nots.slice(0, 8).forEach((n) => log(`  [${n.temas.join(",")}] ${n.titulo} (${n.f
 const doc = {
   atualizadoEm: new Date().toISOString(),
   cotacoes: cotacoes.length ? cotacoes : anterior.cotacoes || [],
-  pracas: pr && pr.pracas.length ? pr.pracas : anterior.pracas || [],
-  pracasData: pr && pr.pracas.length ? pr.data : anterior.pracasData || null,
-  pracasFonte: "Scot Consultoria, boi gordo à vista, preço bruto",
+  // boi gordo na B3 por vencimento: quanto o mercado paga hoje pela arroba entregue em cada mês
+  curva: boi ? boi.curva.map(({ mes, v, var: vr }) => ({ mes, v, var: vr })) : anterior.curva || [],
+  curvaData: boi ? boi.data : anterior.curvaData || null,
+  pracas: !SCOT ? [] : pr && pr.pracas.length ? pr.pracas : anterior.pracas || [],
+  pracasData: !SCOT ? null : pr && pr.pracas.length ? pr.data : anterior.pracasData || null,
+  pracasFonte: SCOT ? "Scot Consultoria, boi gordo à vista, preço bruto" : null,
   noticias: nots.length >= 4 ? nots : anterior.noticias || nots,
   falhas,
 };
-log(`Documento: ${JSON.stringify(doc).length} bytes, ${doc.cotacoes.length} cotações, ${doc.pracas.length} praças, ${doc.noticias.length} notícias.`);
+log(`Documento: ${JSON.stringify(doc).length} bytes, ${doc.cotacoes.length} cotações, ${doc.curva.length} vencimentos, ${doc.pracas.length} praças, ${doc.noticias.length} notícias.`);
 
-if (SECO) { log("SECO=1: nada gravado."); process.exit(0); }
+if (SECO) { log("SECO=1: nada gravado. Documento:"); log("DOC " + JSON.stringify(doc)); process.exit(0); }
 const { db } = await banco();
 await db.doc("publico/indices").set(doc);
 log("Gravado em publico/indices.");
 
 // ------------------------------------------------------------ limpeza do registro de alterações
 const corte = new Date(Date.now() - DIAS_LOG * 864e5).toISOString();
-const velhos = await db.collectionGroup("log").where("quando", "<", corte).get();
 let n = 0;
-for (let i = 0; i < velhos.docs.length; i += 400) {
-  const b = db.batch();
-  velhos.docs.slice(i, i + 400).forEach((d) => b.delete(d.ref));
-  await b.commit(); n += Math.min(400, velhos.docs.length - i);
+// Fazenda por fazenda (contas/{conta}/fazendas/{fazenda}/log): não precisa de índice extra no banco.
+for (const conta of await db.collection("contas").listDocuments()) {
+  for (const faz of await conta.collection("fazendas").listDocuments()) {
+    const velhos = (await faz.collection("log").where("quando", "<", corte).get()).docs;
+    for (let i = 0; i < velhos.length; i += 400) {
+      const b = db.batch();
+      velhos.slice(i, i + 400).forEach((d) => b.delete(d.ref));
+      await b.commit();
+    }
+    n += velhos.length;
+  }
 }
 log(`Registro de alterações: ${n} linha(s) com mais de 1 ano apagada(s).`);
 if (falhas.length) log(`Avisos: ${falhas.join(" · ")}`);
