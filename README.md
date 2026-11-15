@@ -26,6 +26,7 @@ Segue o documento de requisitos funcionais. Cada área é um arquivo `src/telas-
 | Trato | Trato do dia por lote e por ingrediente (consumo em matéria seca ou natural), fornecimento real com sobra, troca de dieta, dietas com versões e ingredientes. |
 | Custos fixos e gerais | Custo fixo mensal e custo geral diluído em meses, rateados por cabeça por dia. |
 | Saída | Abate ou venda viva, com fechamento do lote: custos, arrobas, receita, custo por dia, resultado, arrobas produzidas, custo por arroba produzida e rentabilidade. |
+| Índices | Arroba e milho na bolsa B3 (com os preços por mês de vencimento), dólar do Banco Central e as notícias do agro mais importantes, com o que o preço de hoje significa para os lotes da fazenda. Atualizado por um robô diário (veja abaixo). |
 | Financeiro | Visão geral com gráficos mês a mês, resultado por lote, custo por área, projeção de venda com o preço da arroba que empata e relatórios comparativos por pasto, fornecedor, raça e dieta. Imprime ou salva em PDF. |
 | Conta e fazendas | Fazendas, pessoas com acesso e perfil de cada uma, importação de planilha e registro de alterações. |
 
@@ -58,6 +59,21 @@ Regras que valem para tudo:
 
 Quem bloqueia de verdade é o banco (`firestore.rules`), não a tela. Mesmo alguém mexendo no navegador não lê
 dados de outra conta nem libera a própria assinatura.
+
+## Índices do mercado (robô diário)
+
+O robô `scripts/indices.mjs` roda pelo GitHub Actions (`.github/workflows/indices.yml`, "Índices do dia") às 7h todo dia
+e às 18h30 nos dias de pregão. Ele grava um documento só, `publico/indices`, que todo assinante lê (o do dia anterior
+é trocado, nada se acumula). Fontes: boi gordo e milho na B3, dólar no Banco Central e notícias por RSS do Canal Rural,
+Giro do Boi, g1 Agro e BeefPoint. Se uma fonte falhar, fica o último dado real dela, com a data. Nunca inventa número.
+
+- **Scot Consultoria** (preço físico por praça): o código está pronto e desligado, porque a Scot pede autorização para
+  reproduzir as cotações. Com a autorização, criar em Settings → Secrets and variables → Actions → Variables a variável
+  `SCOT_AUTORIZADO` com o valor `sim`.
+- **CEPEA e DATAGRO**: os sites não liberam leitura por robô e os dados são licenciados. Precisam de licença de uso comercial.
+- O mesmo robô apaga do registro de alterações as linhas com mais de 1 ano.
+- Para testar sem gravar: `SECO=1 node scripts/indices.mjs` (precisa de acesso à internet).
+- O modo demonstração mostra um retrato real dos índices guardado em `src/indices-demo.js`.
 
 ## O que ainda está em aberto
 

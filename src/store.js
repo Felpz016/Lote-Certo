@@ -74,6 +74,7 @@ export function criarStore(avisar) {
 //   contas/{uid}/membros/{e-mail}                 sócio ou funcionário com acesso
 //   convites/{e-mail}                             diz a quem entra de qual conta ele é membro
 //   assinaturas/{uid}                             assinatura da conta (só o administrador grava)
+//   publico/indices                               preços e notícias do dia (só o robô diário grava)
 function storeNuvem(avisar, config, emulador) {
   const app = initializeApp(config);
   // A sessão fica guardada no aparelho (não some ao fechar o navegador ou o app).
@@ -101,6 +102,7 @@ function storeNuvem(avisar, config, emulador) {
     fazendaId: null,
     membros: [],
     perfil: "dono",       // dono, gerente ou campo (sócio ou funcionário)
+    indices: undefined,   // preços e notícias do dia (publico/indices); undefined = ainda buscando
     admin: false,
     adminContas: null,    // só para o administrador: lista de contas com a assinatura de cada uma
     carregado: false,
@@ -232,7 +234,7 @@ function storeNuvem(avisar, config, emulador) {
     Object.keys(parar).forEach(soltar);
     S.usuario = u ? { nome: u.displayName, email: u.email, foto: u.photoURL } : null;
     S.conta = null; S.assinatura = undefined; S.fazendas = null; S.fazendaId = null;
-    S.membros = []; S.perfil = "dono"; S.admin = false; S.adminContas = null; S.db = vazio(); S.carregado = false; S.erro = null;
+    S.membros = []; S.perfil = "dono"; S.indices = undefined; S.admin = false; S.adminContas = null; S.db = vazio(); S.carregado = false; S.erro = null;
     uid = u ? u.uid : null;
     email = u ? String(u.email || "").toLowerCase() : "";
     if (u) {
@@ -248,6 +250,8 @@ function storeNuvem(avisar, config, emulador) {
         if (c && c.donoUid && c.donoUid !== uid) ouvirConta(c.donoUid, c.donoNome);
         else ouvirConta(uid);
       }, () => ouvirConta(uid)));
+      // Índices do mercado: um documento só, igual para todo mundo, que o robô diário regrava.
+      parar.convite.push(onSnapshot(doc(fs, "publico", "indices"), (d) => { S.indices = d.exists() ? d.data() : null; avisar(); }, () => { S.indices = null; avisar(); }));
       // Administrador: só ele consegue listar as contas.
       getDocs(query(collection(fs, "contas"), limit(1)))
         .then(() => { S.admin = true; avisar(); })
@@ -432,6 +436,7 @@ function storeDemo(avisar) {
     fazendaId: tudo.atual,
     membros: [],
     perfil: new URLSearchParams(location.search).get("perfil") === "campo" ? "campo" : "dono",
+    indices: undefined, // retrato real dos índices, carregado logo abaixo só no teste local
     admin: false,
     adminContas: null,
     carregado: true,
@@ -439,6 +444,7 @@ function storeDemo(avisar) {
     pendentes: 0,
     erro: null,
   };
+  import("./indices-demo.js").then((m) => { S.indices = { ...m.INDICES_DEMO, demo: true }; avisar(); }, () => { S.indices = null; avisar(); });
   const persistir = () => {
     tudo.dados[S.fazendaId] = S.db; tudo.atual = S.fazendaId; tudo.fazendas = S.fazendas;
     try { localStorage.setItem(CHAVE, JSON.stringify(tudo)); } catch { /* sem espaço ou bloqueado */ }

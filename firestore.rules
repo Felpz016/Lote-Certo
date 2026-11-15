@@ -75,6 +75,13 @@ service cloud.firestore {
       allow delete: if logado() && resource.data.donoUid == request.auth.uid;
     }
 
+    // Índices do mercado (preços e notícias do dia). Quem entrou lê; só o robô diário grava,
+    // com a chave do servidor, que não passa por estas regras.
+    match /publico/{doc} {
+      allow read: if verificado();
+      allow write: if false;
+    }
+
     // Assinatura de cada conta. Só o administrador grava
     // (ou, no futuro, o aviso automático da plataforma de pagamento).
     match /assinaturas/{conta} {

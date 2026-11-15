@@ -145,6 +145,12 @@ const ok = (c, m) => console.log((c ? 'OK  ' : 'FALHOU ') + m);
   ok(/Preço que empata/i.test(t) && t.includes('002'), 'projeção de venda do lote 002');
   await ir('financeiro/relatorios'); t = await txt();
   ok(t.includes('Pasto C') && /Demonstrativo/i.test(t), 'relatórios: comparativo por pasto e demonstrativo mês a mês');
+  await ir('indices'); await p.waitForSelector('.ix-cot'); t = await txt();
+  ok(t.includes('402,15') && /por vencimento/i.test(t) && t.includes('dez/26') && (await p.locator('.ix-not').count()) >= 8 && /Para a sua fazenda hoje/i.test(t), 'índices: arroba real da B3, vencimentos, notícias e contas da fazenda');
+  await p.click('[data-cot=dolar]'); await p.waitForTimeout(150);
+  ok((await p.locator('.content .graf').count()) >= 1 && (await txt()).includes('Banco Central'), 'índices: gráfico do dólar com a fonte');
+  await p.click('[data-tema=clima]'); await p.waitForTimeout(150);
+  ok((await p.locator('.ix-not').count()) >= 1 && (await p.locator('.ix-not').count()) < 8, 'índices: filtro de notícias por assunto');
   await ir('conta'); t = await txt();
   ok(/Registro de alterações|Correções e exclusões/i.test(t) && /Importar/i.test(t), 'conta: registro de alterações e importação de planilha');
 
@@ -156,6 +162,9 @@ const ok = (c, m) => console.log((c ? 'OK  ' : 'FALHOU ') + m);
   await pc.evaluate(() => { location.hash = 'financeiro/geral'; }); await pc.waitForTimeout(300);
   const tf = await pc.evaluate(() => document.querySelector('.content').innerText);
   ok(!/R\$ ?\d/.test(tc) && !/R\$ ?\d/.test(tf) && !(await pc.locator('.graf').count()), 'perfil campo não vê valores nem o financeiro');
+  await pc.evaluate(() => { location.hash = 'indices'; }); await pc.waitForSelector('.ix-cot');
+  const ti = await pc.evaluate(() => document.querySelector('.content').innerText);
+  ok(ti.includes('402,15') && !/Para a sua fazenda/i.test(ti), 'perfil campo vê os preços do mercado, mas não as contas da fazenda');
   await pc.close();
 
   await ir('painel');
