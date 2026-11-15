@@ -19,8 +19,33 @@ import { exemplo } from "./exemplo.js";
 
 // lotes, pesagens, sanidade (protocolo e tratamento), saidas,
 // pastos, movs (mudanças de pasto), gmds (ajustes do GMD estimado),
-// meds (medicamentos), ingredientes, dietas, tratos (dieta de cada lote), custos (fixos e gerais)
-export const COLECOES = ["lotes", "pesagens", "sanidade", "saidas", "pastos", "movs", "gmds", "meds", "ingredientes", "dietas", "tratos", "custos"];
+// meds (medicamentos), ingredientes, dietas, tratos (dieta de cada lote), custos (fixos e gerais),
+// mortes (morte e perda), fornecimentos (trato fornecido de verdade), agenda (calendário sanitário),
+// config (parâmetros da fazenda, documento "geral") e log (registro de alterações)
+export const COLECOES = ["lotes", "pesagens", "sanidade", "saidas", "pastos", "movs", "gmds", "meds", "ingredientes", "dietas", "tratos", "custos",
+  "mortes", "fornecimentos", "agenda", "config", "log"];
+/** O que o perfil "campo" pode lançar (o banco também confere, em firestore.rules). */
+export const COLECOES_CAMPO = ["pesagens", "sanidade", "movs", "tratos", "fornecimentos", "agenda", "log"];
+const NOME_COL = { lotes: "Lote", pesagens: "Pesagem", sanidade: "Sanidade", saidas: "Saída", pastos: "Pasto", movs: "Mudança de pasto", gmds: "Ajuste de GMD",
+  meds: "Medicamento", ingredientes: "Ingrediente", dietas: "Dieta", tratos: "Troca de dieta", custos: "Custo", mortes: "Morte ou perda",
+  fornecimentos: "Fornecimento de trato", agenda: "Calendário sanitário", config: "Parâmetros da fazenda" };
+
+/** Linhas do registro de alterações (quem corrigiu ou excluiu, e quando) para um conjunto de gravações. */
+function linhasLog(ops, db, quem, agora, novoId) {
+  const out = [];
+  for (const op of ops) {
+    if (op.col === "log" || op.tipo === "set" || op.semLog) continue;
+    const antigo = (db[op.col] || []).find((x) => x.id === op.id) || {};
+    const loteId = op.col === "lotes" ? op.id : (op.dados && op.dados.loteId) || antigo.loteId || null;
+    const campos = op.tipo === "delete" ? "" : Object.keys(op.dados || {}).filter((k) => JSON.stringify(antigo[k] ?? null) !== JSON.stringify(op.dados[k] ?? null)).join(", ");
+    if (op.tipo !== "delete" && !campos) continue;
+    out.push({ tipo: "set", col: "log", id: novoId(), dados: {
+      quando: agora, quem, acao: op.tipo === "delete" ? "excluiu" : "corrigiu", col: op.col, docId: op.id, loteId,
+      oque: op.log || NOME_COL[op.col] || op.col, campos, dataDoc: antigo.data || antigo.dataEntrada || null,
+    } });
+  }
+  return out;
+}
 
 function vazio() {
   return Object.fromEntries(COLECOES.map((c) => [c, []]));
@@ -75,6 +100,7 @@ function storeNuvem(avisar, config, emulador) {
     fazendas: null,       // null = ainda buscando
     fazendaId: null,
     membros: [],
+    perfil: "dono",       // dono, gerente ou campo (sócio ou funcionário)
     admin: false,
     adminContas: null,    // só para o administrador: lista de contas com a assinatura de cada uma
     carregado: false,
@@ -155,6 +181,14 @@ function storeNuvem(avisar, config, emulador) {
     S.conta = { id: contaId, minha: contaId === uid, donoNome: donoNome || "" };
     S.assinatura = undefined; S.fazendas = null; S.fazendaId = null; S.membros = [];
     S.db = vazio(); S.carregado = false;
+    S.perfil = contaId === uid ? "dono" : "gerente";
+    // Sócio ou funcionário: o perfil dele está no cadastro de membros da conta do dono.
+    if (contaId !== uid) {
+      parar.conta.push(onSnapshot(doc(fs, "contas", contaId, "membros", email), (d) => {
+        S.perfil = d.exists() && d.data().perfil === "campo" ? "campo" : "gerente";
+        avisar();
+      }, () => {}));
+    }
 
     let ativaAntes = null;
     parar.conta.push(onSnapshot(doc(fs, "assinaturas", contaId), (d) => {
@@ -198,7 +232,7 @@ function storeNuvem(avisar, config, emulador) {
     Object.keys(parar).forEach(soltar);
     S.usuario = u ? { nome: u.displayName, email: u.email, foto: u.photoURL } : null;
     S.conta = null; S.assinatura = undefined; S.fazendas = null; S.fazendaId = null;
-    S.membros = []; S.admin = false; S.adminContas = null; S.db = vazio(); S.carregado = false; S.erro = null;
+    S.membros = []; S.perfil = "dono"; S.admin = false; S.adminContas = null; S.db = vazio(); S.carregado = false; S.erro = null;
     uid = u ? u.uid : null;
     email = u ? String(u.email || "").toLowerCase() : "";
     if (u) {
@@ -228,13 +262,20 @@ function storeNuvem(avisar, config, emulador) {
 
   /** Grava várias mudanças juntas (ou todas, ou nenhuma). Não espera a internet. */
   function gravar(ops) {
-    const b = writeBatch(fs);
     const agora = new Date().toISOString();
+    ops = [...ops, ...linhasLog(ops, S.db, email, agora, () => doc(collection(fs, "contas", uid, "fazendas")).id)];
+    // O banco aceita até 500 gravações por vez: uma importação grande vai em partes.
+    if (ops.length > 400) { for (let i = 0; i < ops.length; i += 400) gravarParte(ops.slice(i, i + 400), agora); return; }
+    gravarParte(ops, agora);
+  }
+  function gravarParte(ops, agora) {
+    const b = writeBatch(fs);
     let apagando = 0;
     for (const op of ops) {
       const r = ref(op.col, op.id);
-      if (op.tipo === "set") b.set(r, { ...limpar(op.dados), criadoEm: agora, atualizadoEm: agora });
-      else if (op.tipo === "update") b.update(r, { ...limpar(op.dados), atualizadoEm: agora });
+      if (op.tipo === "set") b.set(r, { ...limpar(op.dados), criadoEm: agora, atualizadoEm: agora, criadoPor: email });
+      else if (op.tipo === "merge") b.set(r, { ...limpar(op.dados), atualizadoEm: agora, atualizadoPor: email }, { merge: true });
+      else if (op.tipo === "update") b.update(r, { ...limpar(op.dados), atualizadoEm: agora, atualizadoPor: email });
       else if (op.tipo === "delete") { b.delete(r); apagando++; }
     }
     excluindo += apagando;
@@ -292,13 +333,17 @@ function storeNuvem(avisar, config, emulador) {
       semEspera(updateDoc(doc(fs, "contas", S.conta.id, "fazendas", id), { nome, atualizadoEm: new Date().toISOString() }), "renomear a fazenda");
     },
     // Sócio ou funcionário: passa a ver e lançar nas fazendas desta conta.
-    async convidar(emailMembro) {
+    async convidar(emailMembro, perfil = "gerente") {
       const em = emailMembro.trim().toLowerCase();
       const b = writeBatch(fs);
       const agora = new Date().toISOString();
       b.set(doc(fs, "convites", em), { donoUid: uid, donoNome: S.usuario.nome || S.usuario.email, criadoEm: agora });
-      b.set(doc(fs, "contas", uid, "membros", em), { criadoEm: agora });
+      b.set(doc(fs, "contas", uid, "membros", em), { criadoEm: agora, perfil: perfil === "campo" ? "campo" : "gerente" });
       await b.commit();
+    },
+    /** Perfil do sócio ou funcionário: "gerente" (lança e corrige) ou "campo" (só lança, sem ver custos). */
+    async definirPerfil(em, perfil) {
+      await setDoc(doc(fs, "contas", uid, "membros", em), { perfil: perfil === "campo" ? "campo" : "gerente" }, { merge: true });
     },
     async removerMembro(em) {
       const b = writeBatch(fs);
@@ -373,7 +418,7 @@ function limpar(o) {
 
 // ---------------------------------------------------------------- demonstração
 function storeDemo(avisar) {
-  const CHAVE = "lc-demo-v2";
+  const CHAVE = "lc-demo-v3";
   let tudo;
   try { tudo = JSON.parse(localStorage.getItem(CHAVE)); } catch { tudo = null; }
   if (!tudo || !tudo.fazendas || !tudo.fazendas.length) tudo = { fazendas: [{ id: "exemplo", nome: "Fazenda Boa Vista" }], dados: { exemplo: exemplo() }, atual: "exemplo" };
@@ -386,6 +431,7 @@ function storeDemo(avisar) {
     fazendas: tudo.fazendas,
     fazendaId: tudo.atual,
     membros: [],
+    perfil: new URLSearchParams(location.search).get("perfil") === "campo" ? "campo" : "dono",
     admin: false,
     adminContas: null,
     carregado: true,
@@ -406,12 +452,14 @@ function storeDemo(avisar) {
     S,
     novoId: idNovo,
     gravar(ops) {
-      const agora = new Date().toISOString();
+      const agora = new Date().toISOString(), quem = "demonstração";
+      ops = [...ops, ...linhasLog(ops, S.db, quem, agora, idNovo)];
       for (const op of ops) {
         const lista = S.db[op.col];
         const i = lista.findIndex((x) => x.id === op.id);
-        if (op.tipo === "set") lista.push({ ...op.dados, id: op.id, criadoEm: agora, atualizadoEm: agora });
-        else if (op.tipo === "update" && i >= 0) lista[i] = { ...lista[i], ...op.dados, atualizadoEm: agora };
+        if (op.tipo === "set") lista.push({ ...op.dados, id: op.id, criadoEm: agora, atualizadoEm: agora, criadoPor: quem });
+        else if (op.tipo === "merge") { if (i >= 0) lista[i] = { ...lista[i], ...op.dados, atualizadoEm: agora, atualizadoPor: quem }; else lista.push({ ...op.dados, id: op.id, atualizadoEm: agora, atualizadoPor: quem }); }
+        else if (op.tipo === "update" && i >= 0) lista[i] = { ...lista[i], ...op.dados, atualizadoEm: agora, atualizadoPor: quem };
         else if (op.tipo === "delete" && i >= 0) lista.splice(i, 1);
       }
       persistir();
@@ -428,6 +476,7 @@ function storeDemo(avisar) {
     renomearFazenda(id, nome) { S.fazendas = S.fazendas.map((f) => (f.id === id ? { ...f, nome } : f)); persistir(); avisar(); },
     async convidar() { throw new Error("O acesso para outras pessoas só funciona com o banco na nuvem ligado."); },
     async removerMembro() {},
+    async definirPerfil() {},
     ouvirAdmin() {},
     async definirAssinatura() {},
     async entrar() {},

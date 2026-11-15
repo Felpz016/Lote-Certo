@@ -2,8 +2,9 @@
 import { ultimoEmail, assinaturaAtiva } from "./store.js";
 import { LINK_ASSINAR } from "./firebase-config.js";
 import {
-  store, S, ui, $, $$, esc, d2, icon, toast, erros, confirmar, nomeFazenda, TELAS, MODS, definirAoMudar,
+  store, S, ui, $, $$, esc, d2, icon, toast, erros, confirmar, nomeFazenda, TELAS, mods, soCampo, definirAoMudar,
 } from "./base.js";
+import { secaoImportar, ligarImportar, secaoLog } from "./telas-dados.js";
 import { abrirLote, fecharLote, renderDrawer, drawerAberto, drawerEditando } from "./drawer.js";
 import "./telas-lotes.js";
 import "./telas-pasto.js";
@@ -12,6 +13,7 @@ import "./telas-sanidade.js";
 import "./telas-trato.js";
 import "./telas-custos.js";
 import "./telas-saida.js";
+import "./telas-financeiro.js";
 
 const LOGO = '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="9" fill="#F4B92F"/><path d="M8 22V10M8 22h7M18 16.5l3 3.5 5-8" stroke="#241A02" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const dataHora = (ms) => new Date(ms).toLocaleDateString("pt-BR");
@@ -21,6 +23,7 @@ const EXTRA = { conta: "Conta e fazendas" };
 function rota() {
   const [m, a] = location.hash.slice(1).split("/");
   if (EXTRA[m]) return { mod: null, k: m, chave: m, titulo: EXTRA[m] };
+  const MODS = mods();
   const mod = MODS.find((x) => x.k === m) || MODS[0];
   const aba = mod.abas ? (mod.abas.find((x) => x[0] === a) || mod.abas[0])[0] : null;
   return { mod, k: mod.k, aba, chave: aba ? `${mod.k}/${aba}` : mod.k, titulo: mod.l };
@@ -60,14 +63,15 @@ function render() {
   if (!S.fazendas.length) { telaBloqueio(root, S.erroFazendas ? "erro" : "fazenda"); return; }
   portao = "";
 
+  if ($(".app", root) && $(".app", root).dataset.perfil !== S.perfil) root.innerHTML = "";
   if (!$(".app", root)) {
     root.innerHTML = `
-    <div class="app">
+    <div class="app" data-perfil="${S.perfil}">
       <aside class="side">
         <div class="brand"><div class="logo">${LOGO}Lote Certo</div><b id="fazNome"></b><select id="fazSel" class="fazsel" aria-label="Trocar de fazenda" hidden></select></div>
         <nav class="nav" id="nav" aria-label="Menu"></nav>
         <div class="acts">
-          <button type="button" data-act="excel">${icon("excel")} Baixar planilha Excel</button>
+          ${soCampo() ? "" : `<button type="button" data-act="excel">${icon("excel")} Baixar planilha Excel</button>`}
           <button type="button" data-act="ir" data-to="conta">${icon("conta")} Conta e fazendas</button>
           ${S.admin ? `<button type="button" data-act="ir" data-to="admin">${icon("painel")} Assinantes</button>` : ""}
           ${S.modo === "nuvem" ? `<button type="button" data-act="sair">${icon("sair")} Sair</button>` : ""}
@@ -92,7 +96,7 @@ function render() {
     telaAtual = null;
   }
 
-  const r = rota();
+  const r = rota(), MODS = mods();
   $("#nav").innerHTML = MODS.map((m) => `<a href="#${m.k}" ${m.k === r.k ? 'aria-current="page"' : ""}>${icon(m.k)}<span>${m.l}</span></a>`).join("");
   const naBarra = NA_BARRA.includes(r.k);
   $("#tabbar").innerHTML = MODS.filter((m) => NA_BARRA.includes(m.k)).map((m) =>
@@ -113,7 +117,7 @@ function render() {
   renderStatus();
   renderAvisos();
 
-  const novaAss = JSON.stringify([S.db, S.fazendas, S.fazendaId, S.membros, S.assinatura]);
+  const novaAss = JSON.stringify([S.db, S.fazendas, S.fazendaId, S.membros, S.assinatura, S.perfil]);
   const dadosMudaram = novaAss !== assinatura;
   assinatura = novaAss;
 
@@ -204,13 +208,13 @@ function telaLogin(root) {
 
 function abrirMais() {
   maisAberto = true;
-  const r = rota();
+  const r = rota(), MODS = mods();
   $("#layer").innerHTML = `<div class="scrim" data-act="fechar-mais"></div>
   <div class="sheet" role="dialog" aria-modal="true" aria-label="Mais áreas">
     ${MODS.filter((m) => !NA_BARRA.includes(m.k)).map((m) => `<a href="#${m.k}" ${m.k === r.k ? 'aria-current="page"' : ""}>${icon(m.k)}${m.l}</a>`).join("")}
     <hr>
     <a href="#conta" ${r.k === "conta" ? 'aria-current="page"' : ""}>${icon("conta")}Conta e fazendas</a>
-    <button type="button" data-act="excel">${icon("excel")}Baixar planilha Excel</button>
+    ${soCampo() ? "" : `<button type="button" data-act="excel">${icon("excel")}Baixar planilha Excel</button>`}
     ${S.admin ? `<a href="#admin">${icon("painel")}Assinantes</a>` : ""}
     ${S.modo === "nuvem" ? `<button type="button" data-act="sair">${icon("sair")}Sair</button>` : ""}
   </div>`;
@@ -351,19 +355,30 @@ TELAS.conta = {
     </section>
     ${S.modo === "nuvem" && dono ? `
     <section class="card"><div class="sec-h"><h3>Sócio ou funcionário</h3><span class="note">${S.membros.length} com acesso</span></div>
-      <p class="note">Quem você incluir aqui entra com a própria conta Google e passa a ver e lançar nas suas fazendas. A pessoa não precisa de outra assinatura.</p>
-      ${S.membros.length ? `<div class="rows" style="margin-top:10px">${S.membros.map((m) => `<div class="rowf"><b style="overflow-wrap:anywhere">${esc(m.email)}</b><button class="mini danger" type="button" data-act="tirar-membro" data-email="${esc(m.email)}">Remover acesso</button></div>`).join("")}</div>` : ""}
+      <p class="note">Quem você incluir aqui entra com a própria conta Google e passa a usar as suas fazendas. A pessoa não precisa de outra assinatura. <b>Gerente</b> lança e corrige tudo. <b>Campo</b> só lança pesagem, sanidade, trato e mudança de pasto, e não vê custos, preços nem o financeiro.</p>
+      ${S.membros.length ? `<div class="rows" style="margin-top:10px">${S.membros.map((m) => `<div class="rowf"><b style="overflow-wrap:anywhere;flex:1;min-width:180px">${esc(m.email)}</b>
+        <select data-perfil-de="${esc(m.email)}" aria-label="Perfil de ${esc(m.email)}" class="selmini"><option value="gerente" ${m.perfil === "campo" ? "" : "selected"}>Gerente</option><option value="campo" ${m.perfil === "campo" ? "selected" : ""}>Campo</option></select>
+        <button class="mini danger" type="button" data-act="tirar-membro" data-email="${esc(m.email)}">Remover acesso</button></div>`).join("")}</div>` : ""}
       <form class="rowf" id="fMembro" novalidate style="margin-top:14px">
         <div class="f"><label for="mb-email">E-mail Google da pessoa</label><input id="mb-email" type="email" inputmode="email" autocomplete="off" placeholder="nome@gmail.com"></div>
+        <div class="f" style="max-width:170px"><label for="mb-perfil">Perfil</label><select id="mb-perfil"><option value="gerente">Gerente</option><option value="campo">Campo</option></select></div>
         <button class="btn" type="submit">Dar acesso</button></form>
     </section>` : ""}
+    ${soCampo() ? "" : secaoImportar() + secaoLog()}
     <section class="card"><div class="sec-h"><h3>Assinatura</h3></div>
       ${S.modo === "demo" ? '<p class="note">Modo demonstração: sem conta e sem assinatura.</p>' : `
       <div class="facts" style="grid-template-columns:1fr 1fr;margin-bottom:10px"><div><span class="label">Situação</span><b>Ativa</b></div><div><span class="label">Vale até</span><b>${a && a.ate ? dataHora(a.ate) : "Sem prazo"}</b></div></div>
-      <p class="note">${dono ? `Conta ${esc(S.usuario.email)}.` : `Você entrou como ${esc(S.usuario.email)} e usa a conta de ${esc(S.conta.donoNome || "outra pessoa")}.`} <button class="link" type="button" data-act="sair">Sair</button>${S.admin ? ' · <a class="link" href="#admin">Assinantes</a>' : ""}</p>`}
+      <p class="note">${dono ? `Conta ${esc(S.usuario.email)}.` : `Seu perfil: ${S.perfil === "campo" ? "campo (só lançamentos, sem custos)" : "gerente"}. Você entrou como ${esc(S.usuario.email)} e usa a conta de ${esc(S.conta.donoNome || "outra pessoa")}.`} <button class="link" type="button" data-act="sair">Sair</button>${S.admin ? ' · <a class="link" href="#admin">Assinantes</a>' : ""}</p>`}
     </section>`;
   },
   ligarLista() {
+    ligarImportar();
+    $$("[data-perfil-de]").forEach((el) => {
+      el.onchange = async () => {
+        try { await store.definirPerfil(el.dataset.perfilDe, el.value); toast(`${el.dataset.perfilDe} agora é ${el.value === "campo" ? "campo" : "gerente"}.`); }
+        catch (err) { toast("Não foi possível mudar o perfil: " + err.message); }
+      };
+    });
     $$("form[data-faz]").forEach((f) => {
       f.onsubmit = (ev) => {
         ev.preventDefault();
@@ -413,7 +428,7 @@ TELAS.conta = {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) e.push(["mb-email", "Informe um e-mail válido."]);
       else if (em === String(S.usuario.email).toLowerCase()) e.push(["mb-email", "Este é o seu próprio e-mail."]);
       if (!erros(fm, e)) return;
-      try { await store.convidar(em); toast(`${em} agora tem acesso às suas fazendas.`); }
+      try { await store.convidar(em, $("#mb-perfil").value); toast(`${em} agora tem acesso às suas fazendas.`); }
       catch (err) { erros(fm, [["mb-email", err.code === "permission-denied" ? "Este e-mail já usa a conta de outra pessoa." : "Não foi possível dar acesso: " + err.message]]); }
     };
   },

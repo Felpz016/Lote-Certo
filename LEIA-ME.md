@@ -18,14 +18,16 @@ Segue o documento de requisitos funcionais. Cada área é um arquivo `src/telas-
 
 | Área | O que faz |
 |---|---|
-| Painel | Cabeças, custo do dia da fazenda, peso médio estimado, GMD, pastos e avisos de pesagem atrasada. |
-| Lotes | Entrada (com custo por kg, comissão, frete, pasto, trato e GMD estimado) e lotes ativos com custo por dia. |
-| Manejo de pasto | Disposição dos lotes, mudança de pasto e cadastro de pastos com custo por hectare por ano. |
+| Painel | Cabeças, custo do dia da fazenda, peso médio estimado, GMD, lotação em UA/ha, mortalidade, pendências do calendário sanitário e avisos de pesagem atrasada e de pasto acima da capacidade. |
+| Lotes | Entrada (com custo por kg, peso de compra e de chegada, comissão, frete, GTA, nota fiscal, peso-alvo, pasto, trato e GMD estimado), lotes ativos com custo por dia e por arroba produzida, e morte e perda. |
+| Manejo de pasto | Disposição dos lotes com lotação em UA/ha, mudança de pasto e cadastro de pastos com custo por hectare por ano e capacidade de suporte. |
 | Pesagem e apartação | Balança contra peso estimado, ajuste do GMD estimado e lotes derivados que herdam os custos. |
-| Sanidade | Protocolo, tratamento e catálogo de medicamentos. |
-| Trato | Trato do dia por lote e por ingrediente, troca de dieta, dietas com versões e ingredientes. |
+| Sanidade | Protocolo, tratamento, calendário sanitário e catálogo de medicamentos com carência. A saída para abate avisa se há carência aberta. |
+| Trato | Trato do dia por lote e por ingrediente (consumo em matéria seca ou natural), fornecimento real com sobra, troca de dieta, dietas com versões e ingredientes. |
 | Custos fixos e gerais | Custo fixo mensal e custo geral diluído em meses, rateados por cabeça por dia. |
-| Saída | Abate ou venda viva, com fechamento do lote: custos, arrobas, receita, custo por dia e resultado. |
+| Saída | Abate ou venda viva, com fechamento do lote: custos, arrobas, receita, custo por dia, resultado, arrobas produzidas, custo por arroba produzida e rentabilidade. |
+| Financeiro | Visão geral com gráficos mês a mês, resultado por lote, custo por área, projeção de venda com o preço da arroba que empata e relatórios comparativos por pasto, fornecedor, raça e dieta. Imprime ou salva em PDF. |
+| Conta e fazendas | Fazendas, pessoas com acesso e perfil de cada uma, importação de planilha e registro de alterações. |
 
 Regras que valem para tudo:
 
@@ -33,6 +35,13 @@ Regras que valem para tudo:
   O custo de cada dia usa o preço que valia naquele dia. Preço novo nunca muda o passado.
 - **Medido vence estimado**: entre pesagens o peso cresce pelo GMD estimado; a balança passa a valer quando lançada.
 - **Custo do lote** = aquisição + pasto + trato + sanidade + custos fixos + custos gerais, somados dia a dia.
+- **Compra paga o peso da origem, desempenho usa o peso de chegada**: quando o peso de compra é informado, o custo de
+  aquisição usa ele; GMD e arrobas produzidas partem do peso de chegada.
+- **Morte não tira custo do lote**: a cabeça sai da contagem, o que ela custou continua no lote.
+- **Fornecimento real vence o estimado**: no dia em que o trato fornecido é lançado, o custo usa os quilos fornecidos.
+- **Arrobas produzidas** = arrobas de saída menos arrobas de entrada (peso de entrada × rendimento de entrada, padrão 50%).
+  O rendimento e o preço da arroba para simular ficam em Financeiro, Projeção.
+- **1 UA = 450 kg** de peso vivo.
 
 ## Como funciona o acesso
 
@@ -40,7 +49,12 @@ Regras que valem para tudo:
 2. Sem assinatura ativa, a pessoa vê a tela "Falta ativar a assinatura" e não consegue ler nem gravar nada.
 3. O administrador abre **Assinantes** (`/app/#admin`) e toca em **Liberar acesso**. Pode pôr uma data de validade ou deixar sem prazo.
 4. A tela do cliente se atualiza sozinha. Ele dá nome à primeira fazenda e começa a usar.
-5. Cada conta pode ter várias fazendas e incluir sócio ou funcionário pelo e-mail Google.
+5. Cada conta pode ter várias fazendas e incluir sócio ou funcionário pelo e-mail Google, com um perfil:
+   **gerente** (faz tudo nas fazendas) ou **campo** (só lança pesagem, sanidade, mudança de pasto e trato).
+   No perfil campo a tela não mostra custos, preços, saída nem financeiro, e o banco recusa qualquer gravação fora
+   dos lançamentos dele. A leitura dos dados da fazenda continua liberada para todo membro, então o que esconde
+   os valores do perfil campo é a tela.
+6. Toda correção ou exclusão fica no registro de alterações (quem, quando e o quê). O registro só recebe linhas novas.
 
 Quem bloqueia de verdade é o banco (`firestore.rules`), não a tela. Mesmo alguém mexendo no navegador não lê
 dados de outra conta nem libera a própria assinatura.

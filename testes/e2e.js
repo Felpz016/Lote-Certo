@@ -1,5 +1,6 @@
 // Teste de ponta a ponta com os emuladores do Firebase. Veja "Testar no computador" no LEIA-ME.
 // Antes de rodar, troque SEU_EMAIL@gmail.com por admin@teste.com em firestore.rules (só para o teste).
+// Confere também os perfis: gerente grava tudo, campo só grava os lançamentos do dia a dia.
 const {chromium}=require('playwright');
 const U='http://localhost:8080/app/?emulador';
 const ok=(c,m)=>console.log((c?'OK  ':'FALHOU ')+m);
@@ -52,6 +53,28 @@ async function token(email){const r=await fetch('http://127.0.0.1:9099/identityt
  ok(w.status===403,'ninguém libera a própria assinatura (403)');
  const w2=await fetch(base+`contas/${intr.localId}/fazendas/x`,{method:'PATCH',headers:{Authorization:'Bearer '+intr.idToken,'content-type':'application/json'},body:JSON.stringify({fields:{nome:{stringValue:'x'}}})});
  ok(w2.status===403,'sem assinatura não cria fazenda (403)');
+ // perfis: o sócio entra como gerente (grava tudo); como "campo" só grava os lançamentos do dia a dia
+ const soc=await token('socio@teste.com');
+ const lst=await (await fetch(base+`contas/${dono.localId}/fazendas`,{headers:{Authorization:'Bearer '+dono.idToken}})).json();
+ const faz=lst.documents[0].name.split('/documents/')[1];
+ const grava=async(path,t,metodo='PATCH')=>(await fetch(base+path,{method:metodo,headers:{Authorization:'Bearer '+t.idToken,'content-type':'application/json'},body:metodo==='DELETE'?undefined:JSON.stringify({fields:{valor:{integerValue:'1'}}})})).status;
+ ok(await grava(faz+'/custos/t1',soc)===200,'gerente grava custos (200)');
+ const pf=await fetch(base+`contas/${dono.localId}/membros/socio@teste.com?updateMask.fieldPaths=perfil`,{method:'PATCH',headers:{Authorization:'Bearer '+dono.idToken,'content-type':'application/json'},body:JSON.stringify({fields:{perfil:{stringValue:'campo'}}})});
+ ok(pf.status===200,'dono muda o perfil do sócio para campo');
+ ok(await grava(faz+'/custos/t2',soc)===403,'campo não cria custos (403)');
+ ok(await grava(faz+'/custos/t1',soc)===403,'campo não altera custos (403)');
+ ok(await grava(faz+'/lotes/t1',soc)===403,'campo não cria lotes (403)');
+ ok(await grava(faz+'/custos/t1',soc,'DELETE')===403,'campo não apaga custos (403)');
+ ok(await grava(faz+'/pesagens/t1',soc)===200,'campo lança pesagem (200)');
+ ok(await grava(faz+'/sanidade/t1',soc)===200&&await grava(faz+'/fornecimentos/t1',soc)===200&&await grava(faz+'/agenda/t1',soc)===200,'campo lança sanidade, fornecimento e calendário (200)');
+ ok(await grava(faz+'/log/t1',soc)===200,'registro de alterações aceita linha nova (200)');
+ ok(await grava(faz+'/log/t1',soc)===403&&await grava(faz+'/log/t1',dono)===403,'ninguém altera uma linha do registro (403)');
+ ok(await grava(faz+'/log/t1',soc,'DELETE')===403,'campo não apaga o registro (403)');
+ ok(await g(faz+'/custos',soc)===200,'campo continua lendo a fazenda (200)');
+ await C.waitForFunction(()=>!document.querySelector('#tabbar a[href="#custos"], #nav a[href="#financeiro"]'),null,{timeout:10000});
+ await C.evaluate(()=>{location.hash='financeiro/geral'});await C.waitForTimeout(500);
+ ok(!(await C.locator('.graf').count())&&!/R\$ ?\d/.test(await C.evaluate(()=>document.querySelector('.content')?.innerText||'')),'tela do perfil campo fica sem financeiro e sem valores');
+ await grava(faz+'/custos/t1',dono,'DELETE');
  // admin bloqueia
  const linha2=AD.locator('form[data-conta]',{hasText:'cliente@teste.com'});
  await linha2.locator('button:has-text("Bloquear")').click();

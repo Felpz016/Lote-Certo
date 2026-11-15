@@ -1,9 +1,9 @@
 // Trato: exigência do dia por lote, troca de dieta, dietas (com versões) e catálogo de ingredientes.
 import {
   store, S, M, $, $$, esc, d2, n0, n1, n2, rs, num, tagLote, toast, msgSalvo, erros, ativos, lotePorId, nomeDe, ordenados, porId,
-  opcoesLotes, opcoes, campo, campoData, sel, val, confirmar, histPrecos, comPreco, TELAS, hoje,
+  opcoesLotes, opcoes, campo, campoData, sel, seg, marcado, val, confirmar, histPrecos, comPreco, TELAS, hoje, soCampo, sinal,
 } from "./base.js";
-import { dietaEm, vigente } from "./calc.js";
+import { dietaEm, vigente, kgNatural, modelo } from "./calc.js";
 import { opcoesDieta } from "./telas-lotes.js";
 
 const opcoesIng = (v) => opcoes("ingredientes", v, S.db.ingredientes.length ? "Escolha o ingrediente" : "Nenhum ingrediente cadastrado");
@@ -15,39 +15,119 @@ TELAS["trato/dia"] = {
     const m = M(), h = hoje();
     if (!S.db.dietas.length) return `<section class="card"><h3>Nenhuma dieta cadastrada</h3><p class="note" style="margin:8px 0 14px">Cadastre os ingredientes com o preço por tonelada, monte a dieta e escolha a dieta de cada lote. O sistema calcula quanto cada lote precisa por dia e quanto custa.</p>
       <div class="actions"><button class="btn" type="button" data-act="ir" data-to="trato/ingredientes">Cadastrar ingredientes</button><button class="btn ghost" type="button" data-act="ir" data-to="trato/dietas">Montar dieta</button></div></section>`;
-    const com = m.ativos.filter((r) => r.consumo), sem = m.ativos.filter((r) => !r.consumo);
+    const com = m.ativos.filter((r) => r.consumo), sem = m.ativos.filter((r) => !r.consumo), sc = soCampo();
+    const kgDe = (r) => (r.consumo.real ? r.consumo.real.kg : r.consumo.kgLote);
     const tot = new Map();
     let kg = 0, custo = 0;
     const cards = com.map((r) => {
       const dt = dietaEm(S.db, porId("dietas", r.dietaId), h);
-      kg += r.consumo.kgLote; custo += r.hoje.trato;
+      kg += kgDe(r); custo += r.hoje.trato;
       const linhas = dt.itens.map((it) => {
-        const q = (r.consumo.kgLote * it.pct) / 100, c = q * it.rKg;
+        const q = (kgDe(r) * it.pct) / 100, c = q * it.rKg;
         const t = tot.get(it.ingId) || { nome: it.nome, kg: 0, custo: 0 };
         t.kg += q; t.custo += c; tot.set(it.ingId, t);
-        return `<tr><td>${esc(it.nome)} <span class="note">${n1(it.pct)}%</span></td><td class="r"><b>${n1(q)} kg</b></td><td class="r">${rs(c)}</td></tr>`;
+        return `<tr><td>${esc(it.nome)} <span class="note">${n1(it.pct)}%</span></td><td class="r"><b>${n1(q)} kg</b></td>${sc ? "" : `<td class="r">${rs(c)}</td>`}</tr>`;
       }).join("");
       return `<section class="card pcard">
         <div><span class="kicker">Dieta ${esc(nomeDe("dietas", r.dietaId))}</span>
           <h3><button type="button" data-act="lote" data-id="${r.lote.id}" style="border:0;background:none;padding:0;cursor:pointer" aria-label="Abrir lote ${esc(r.lote.numero)}">${tagLote(r.lote)}</button></h3></div>
         <div class="nums">
-          <div><span class="label">No cocho</span><b>${n0(r.consumo.kgLote)} kg</b></div>
+          <div><span class="label">No vagão</span><b>${n0(r.consumo.kgLote)} kg</b></div>
           <div><span class="label">Por cabeça</span><b>${n2(r.consumo.kgCab)} kg</b></div>
-          <div><span class="label">Custo hoje</span><b>${rs(r.hoje.trato, 0)}</b></div>
+          ${sc ? `<div><span class="label">Matéria seca</span><b>${n1(r.consumo.ms)}%</b></div>` : `<div><span class="label">Custo hoje</span><b>${rs(r.hoje.trato, 0)}</b></div>`}
         </div>
-        <p class="note">${r.lote.quantidade} cabeças × ${n0(r.peso)} kg estimados × ${n2(r.consumo.pv)}% do peso vivo = ${n0(r.consumo.kgLote)} kg por dia · ${rs(r.consumo.custoKg, 3)} por kg da dieta</p>
-        <div class="tw"><table class="compacta"><thead><tr><th>Ingrediente</th><th class="r">Quanto vai</th><th class="r">Custo</th></tr></thead><tbody>${linhas}</tbody></table></div>
+        <p class="note">${r.consumo.base === "ms"
+          ? `${r.lote.quantidade} cabeças × ${n0(r.peso)} kg estimados × ${n2(r.consumo.pv)}% do peso vivo em matéria seca = ${n0(r.consumo.kgMsCab * r.lote.quantidade)} kg de MS ÷ ${n1(r.consumo.ms)}% de MS da dieta = ${n0(r.consumo.kgLote)} kg de matéria natural por dia`
+          : `${r.lote.quantidade} cabeças × ${n0(r.peso)} kg estimados × ${n2(r.consumo.pv)}% do peso vivo = ${n0(r.consumo.kgLote)} kg por dia (${n2(r.consumo.kgMsCab)} kg de MS por cabeça)`}${sc ? "" : ` · ${rs(r.consumo.custoKg, 3)} por kg da dieta`}</p>
+        ${r.consumo.real ? `<p class="note"><b>Fornecido hoje: ${n0(r.consumo.real.kg)} kg</b>${r.consumo.real.sobra ? `, sobra de ${n0(r.consumo.real.sobra)} kg` : ""}. Os ingredientes abaixo e o custo de hoje usam o fornecido.</p>` : ""}
+        <div class="tw"><table class="compacta"><thead><tr><th>Ingrediente</th><th class="r">Quanto vai</th>${sc ? "" : '<th class="r">Custo</th>'}</tr></thead><tbody>${linhas}</tbody></table></div>
       </section>`;
     }).join("");
     const resumo = com.length ? `<section class="card"><div class="sec-h"><h3>Trato de hoje, ${d2(h)}</h3><span class="note">${com.length} ${com.length === 1 ? "lote" : "lotes"} no cocho</span></div>
-      <div class="calc"><div><span class="label">Total no cocho</span><b>${n0(kg)} kg</b></div><div><span class="label">Custo por kg médio</span><b>${rs(kg ? custo / kg : 0, 3)}</b></div>
-      <div class="res" style="grid-column:span 2"><span class="label">Custo de trato do dia</span><b>${rs(custo)}</b><span class="note">soma de todos os lotes</span></div></div>
-      <div class="tw" style="margin-top:12px"><table class="compacta"><thead><tr><th>Ingrediente</th><th class="r">Total do dia</th><th class="r">Custo</th></tr></thead><tbody>
-      ${[...tot.values()].sort((a, b) => b.kg - a.kg).map((t) => `<tr><td>${esc(t.nome)}</td><td class="r"><b>${n1(t.kg)} kg</b></td><td class="r">${rs(t.custo)}</td></tr>`).join("")}</tbody></table></div></section>`
+      <div class="calc"><div><span class="label">Total no vagão</span><b>${n0(kg)} kg</b><span class="note">matéria natural</span></div>${sc ? "" : `<div><span class="label">Custo por kg médio</span><b>${rs(kg ? custo / kg : 0, 3)}</b></div>
+      <div class="res" style="grid-column:span 2"><span class="label">Custo de trato do dia</span><b>${rs(custo)}</b><span class="note">soma de todos os lotes</span></div>`}</div>
+      <div class="tw" style="margin-top:12px"><table class="compacta"><thead><tr><th>Ingrediente</th><th class="r">Total do dia</th>${sc ? "" : '<th class="r">Custo</th>'}</tr></thead><tbody>
+      ${[...tot.values()].sort((a, b) => b.kg - a.kg).map((t) => `<tr><td>${esc(t.nome)}</td><td class="r"><b>${n1(t.kg)} kg</b></td>${sc ? "" : `<td class="r">${rs(t.custo)}</td>`}</tr>`).join("")}</tbody></table></div></section>`
       : `<section class="card"><p class="empty">Nenhum lote ativo está com dieta. Escolha a dieta na entrada do lote ou em Troca de dieta.</p></section>`;
     return `${resumo}<div class="grid3" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr))">${cards}</div>
       ${sem.length ? `<p class="note">Só no pasto, sem trato: ${sem.map((r) => esc(r.lote.numero)).join(", ")}.</p>` : ""}
-      <div class="actions"><button class="btn" type="button" data-act="ir" data-to="trato/troca">Trocar a dieta de um lote</button></div>`;
+      <div class="actions"><button class="btn" type="button" data-act="ir" data-to="trato/real">Lançar o que foi fornecido</button><button class="btn ghost" type="button" data-act="ir" data-to="trato/troca">Trocar a dieta de um lote</button></div>`;
+  },
+};
+
+// ------------------------------------------------------------ fornecimento real
+/** Situação do lote num dia: dieta, consumo estimado e custo por kg. */
+function noDia(loteId, data) {
+  const r = data && data <= hoje() ? modelo({ ...S.db, fornecimentos: [] }, data).lote(loteId) : null;
+  return r && r.consumo ? r : null;
+}
+function calcReal() {
+  const box = $("#fr-calc");
+  if (!box) return;
+  const l = lotePorId(val("fr-lote")), data = val("fr-data"), kg = num(val("fr-kg")), sobra = num(val("fr-sobra")) || 0;
+  if (!l) { box.innerHTML = '<span class="formula">Nenhum lote ativo.</span>'; return; }
+  const r = noDia(l.id, data);
+  if (!r) { box.innerHTML = `<span class="formula">${esc(l.numero)} não estava com dieta em ${d2(data)}. Escolha a dieta do lote em Troca de dieta.</span>`; return; }
+  const est = r.consumo.kgLote, cons = kg ? kg - sobra : null;
+  box.innerHTML = `
+    <div><span class="label">Estimado pelo sistema</span><b>${n0(est)} kg</b><span class="note">${n2(r.consumo.kgCab)} kg por cabeça</span></div>
+    <div><span class="label">Fornecido × estimado</span><b class="${kg ? (kg <= est ? "pos" : "neg") : ""}">${kg ? sinal(((kg - est) / est) * 100) + "%" : "—"}</b><span class="note">${kg ? sinal(kg - est) + " kg" : ""}</span></div>
+    <div><span class="label">Consumido de verdade</span><b>${cons == null ? "—" : n0(cons) + " kg"}</b><span class="note">${cons == null ? "" : `${n2((cons / l.quantidade / r.peso) * 100)}% do peso vivo${sobra && kg ? ` · sobra de ${n1((sobra / kg) * 100)}%` : ""}`}</span></div>
+    ${soCampo() ? "<div></div>" : `<div class="res"><span class="label">Custo do trato no dia</span><b>${rs((kg || est) * r.consumo.custoKg)}</b><span class="note">${kg ? "pelo fornecido" : "pelo estimado"}</span></div>`}
+    <span class="formula">Com o fornecimento lançado, o custo de trato do dia usa o que foi para o cocho${soCampo() ? "" : ` (kg fornecido × ${rs(r.consumo.custoKg, 3)} por kg da dieta)`} em vez da estimativa.</span>`;
+}
+
+TELAS["trato/real"] = {
+  form: () => `
+    <form class="card" id="fReal" novalidate>
+      <div class="fgrid">
+        ${sel("fr-lote", "Lote", opcoesLotes(ativos().filter((l) => M().lote(l.id)?.dietaId)))}
+        ${campoData("fr-data", "Data")}
+        ${campo("fr-kg", "Fornecido no dia (kg, do jeito que foi para o cocho)", { tipo: "number", ph: "kg" })}
+        ${campo("fr-sobra", "Sobra no cocho (kg)", { tipo: "number", ph: "opcional" })}
+      </div>
+      <div class="calc" id="fr-calc" aria-live="polite"></div>
+      <div class="actions"><button class="btn" type="submit">Salvar fornecimento</button><span class="note">Opcional. Nos dias sem lançamento, o sistema continua usando a estimativa.</span></div>
+    </form>`,
+  atualizarForm() { const el = $("#fr-lote"); el.innerHTML = opcoesLotes(ativos().filter((l) => M().lote(l.id)?.dietaId), el.value); calcReal(); },
+  ligar() {
+    const f = $("#fReal");
+    f.addEventListener("input", calcReal); f.addEventListener("change", calcReal);
+    calcReal();
+    f.onsubmit = (ev) => {
+      ev.preventDefault();
+      const l = lotePorId(val("fr-lote")), data = val("fr-data"), kg = num(val("fr-kg")), sobra = num(val("fr-sobra"));
+      const e = [];
+      if (!l) e.push(["fr-lote", "Escolha o lote."]);
+      if (!data) e.push(["fr-data", "Informe a data."]);
+      else if (data > hoje()) e.push(["fr-data", "A data não pode ser no futuro."]);
+      else if (l && data < l.dataEntrada) e.push(["fr-data", `O lote entrou em ${d2(l.dataEntrada)}.`]);
+      else if (l && !noDia(l.id, data)) e.push(["fr-data", "O lote não estava com dieta nessa data."]);
+      if (!kg || kg <= 0) e.push(["fr-kg", "Informe quantos kg foram fornecidos."]);
+      if (sobra != null && kg && (sobra < 0 || sobra >= kg)) e.push(["fr-sobra", "A sobra precisa ser menor que o fornecido."]);
+      if (!erros(f, e)) return;
+      const mesmo = (S.db.fornecimentos || []).find((x) => x.loteId === l.id && x.data === data);
+      const dados = { loteId: l.id, data, kg, sobra: sobra || 0 };
+      store.gravar([mesmo ? { tipo: "update", col: "fornecimentos", id: mesmo.id, dados } : { tipo: "set", col: "fornecimentos", id: store.novoId(), dados }]);
+      toast(`${l.numero}: ${n0(kg)} kg fornecidos em ${d2(data)}${mesmo ? " (substituiu o lançamento anterior)" : ""}. ${msgSalvo()}`);
+      $("#fr-kg").value = ""; $("#fr-sobra").value = "";
+      calcReal();
+    };
+  },
+  lista() {
+    const fs = [...(S.db.fornecimentos || [])].sort((a, b) => b.data.localeCompare(a.data) || String(a.loteId).localeCompare(String(b.loteId))).slice(0, 90);
+    if (!fs.length) return '<section class="card"><p class="empty">Nenhum fornecimento lançado. O custo de trato está todo na estimativa.</p></section>';
+    const sc = soCampo(), cache = new Map();
+    const sit = (x) => { const k = x.loteId + x.data; if (!cache.has(k)) cache.set(k, noDia(x.loteId, x.data)); return cache.get(k); };
+    return `<section class="card"><div class="sec-h"><h3>Fornecimentos lançados</h3><span class="note">${(S.db.fornecimentos || []).length}</span></div>
+    <div class="tw"><table><thead><tr><th>Data</th><th>Lote</th><th class="r">Fornecido</th><th class="r">Sobra</th><th class="r">Consumido</th><th class="r">Estimado</th><th class="r">Diferença</th>${sc ? "" : '<th class="r">Custo</th>'}<th></th></tr></thead><tbody>
+    ${fs.map((x) => { const r = sit(x), est = r ? r.consumo.kgLote : null, dif = est ? ((x.kg - est) / est) * 100 : null;
+      return `<tr><td>${d2(x.data)}</td><td>${tagLote(lotePorId(x.loteId))}</td><td class="r"><b>${n0(x.kg)} kg</b></td><td class="r">${x.sobra ? n0(x.sobra) + " kg" : "—"}</td><td class="r">${n0(x.kg - (x.sobra || 0))} kg</td><td class="r">${est == null ? "—" : n0(est) + " kg"}</td><td class="r ${dif == null ? "" : dif <= 0 ? "pos" : "neg"}">${dif == null ? "—" : sinal(dif) + "%"}</td>${sc ? "" : `<td class="r">${r ? rs(x.kg * r.consumo.custoKg) : "—"}</td>`}
+      <td><button class="mini danger" type="button" data-excluir-forn="${x.id}" data-confirm="Confirmar exclusão">Excluir</button></td></tr>`; }).join("")}
+    </tbody></table></div><p class="note" style="margin-top:10px">Excluir um lançamento faz o dia voltar para a estimativa.</p></section>`;
+  },
+  ligarLista() {
+    $$("[data-excluir-forn]").forEach((b) => confirmar(b, () => { store.gravar([{ tipo: "delete", col: "fornecimentos", id: b.dataset.excluirForn }]); toast("Fornecimento excluído. O dia voltou para a estimativa."); }));
   },
 };
 
@@ -124,7 +204,7 @@ function lerItens(pfx) {
   const soma = itens.reduce((s, x) => s + x.pct, 0);
   return { itens, soma, e, ok100: Math.abs(soma - 100) < 0.01 };
 }
-function resumoItens(pfx, data, pv) {
+function resumoItens(pfx, data, pv, base) {
   const box = $(`#${pfx}-res`);
   if (!box) return;
   const { itens, soma, ok100 } = lerItens(pfx);
@@ -135,11 +215,11 @@ function resumoItens(pfx, data, pv) {
     <div><span class="label">Soma das %</span><b class="${ok100 ? "pos" : "neg"}">${n1(soma)}%</b><span class="note">${ok100 ? "fechou 100%" : soma < 100 ? "faltam " + n1(100 - soma) + "%" : "passou " + n1(soma - 100) + "%"}</span></div>
     <div><span class="label">Matéria seca</span><b>${n1(ms)}%</b></div>
     <div class="res"><span class="label">Custo por kg</span><b>${rs(custoKg, 3)}</b><span class="note">${rs(custoKg * 1000, 0)} por tonelada</span></div>
-    <div><span class="label">Boi de 300 kg</span><b>${pv ? rs(3 * pv * custoKg) : "—"}</b><span class="note">${pv ? n1(3 * pv) + " kg por dia" : "informe a % do peso vivo"}</span></div>
-    <span class="formula">Custo por kg = soma de (% do ingrediente × R$/kg do ingrediente), com o preço de ${d2(data)}.</span>`;
+    <div><span class="label">Boi de 300 kg</span><b>${pv ? rs(kgNatural(300, pv, base, ms) * custoKg) : "—"}</b><span class="note">${pv ? `${n1(kgNatural(300, pv, base, ms))} kg no vagão por dia${base === "ms" ? ` (${n1(3 * pv)} kg de MS)` : ""}` : "informe a % do peso vivo"}</span></div>
+    <span class="formula">Custo por kg = soma de (% do ingrediente × R$/kg do ingrediente), com o preço de ${d2(data)}.${base === "ms" ? " Matéria natural = matéria seca ÷ % de MS da dieta." : ""}</span>`;
 }
-function ligarItens(form, pfx, dataDe, pvDe) {
-  const atualiza = () => resumoItens(pfx, dataDe(), pvDe());
+function ligarItens(form, pfx, dataDe, pvDe, baseDe) {
+  const atualiza = () => resumoItens(pfx, dataDe(), pvDe(), baseDe());
   form.addEventListener("input", atualiza);
   form.addEventListener("change", atualiza);
   const mais = form.querySelector(`[data-mais-item="${pfx}"]`);
@@ -157,14 +237,16 @@ TELAS["trato/dietas"] = {
       <h3>Nova dieta</h3>
       <div class="fgrid">
         ${campo("di-nome", "Nome da dieta", { ph: "Ex.: Recria 1%" })}
-        ${campo("di-pv", "Consumo esperado (% do peso vivo por dia)", { tipo: "number", ph: "1", hint: "Ex.: 1 para 1% do peso vivo" })}
+        ${campo("di-pv", "Consumo esperado (% do peso vivo por dia)", { tipo: "number", ph: "2,2", hint: "Ex.: 2,2 para 2,2% do peso vivo" })}
+        ${seg("di-base", "O consumo é em", [["ms", "Matéria seca"], ["mn", "Matéria natural"]], "ms")}
       </div>
+      <p class="note">Matéria seca é o padrão dos nutricionistas: o sistema converte para o peso que vai no vagão usando a % de matéria seca dos ingredientes. Escolha matéria natural se a sua % já é do peso que vai no cocho.</p>
       ${blocoItens("di")}
-      <div class="actions"><button class="btn" type="submit">Cadastrar dieta</button><span class="note">As % são do jeito que vai no cocho (matéria natural).</span></div>
+      <div class="actions"><button class="btn" type="submit">Cadastrar dieta</button><span class="note">As % dos ingredientes são do jeito que é misturado (matéria natural).</span></div>
     </form>`,
   ligar() {
     const f = $("#fDieta");
-    ligarItens(f, "di", hoje, () => num(val("di-pv")));
+    ligarItens(f, "di", hoje, () => num(val("di-pv")), () => marcado("di-base") || "ms");
     f.onsubmit = (ev) => {
       ev.preventDefault();
       const nome = val("di-nome"), pv = num(val("di-pv")), r = lerItens("di");
@@ -175,10 +257,10 @@ TELAS["trato/dietas"] = {
       if (!r.itens.length) e.push(["di-ing-0", "Escolha pelo menos um ingrediente."]);
       else if (!r.e.length && !r.ok100) e.push(["di-pct-0", `A soma das % está em ${n1(r.soma)}%. Tem que dar 100%.`]);
       if (!erros(f, e)) return;
-      store.gravar([{ tipo: "set", col: "dietas", id: store.novoId(), dados: { nome, versoes: [{ desde: hoje(), pv, itens: r.itens }] } }]);
+      store.gravar([{ tipo: "set", col: "dietas", id: store.novoId(), dados: { nome, versoes: [{ desde: hoje(), pv, base: marcado("di-base") === "mn" ? "mn" : "ms", itens: r.itens }] } }]);
       toast(`Dieta ${nome} cadastrada. ${msgSalvo()}`);
       f.reset();
-      resumoItens("di", hoje(), null);
+      resumoItens("di", hoje(), null, "ms");
     };
   },
   lista() {
@@ -188,14 +270,14 @@ TELAS["trato/dietas"] = {
     <div class="rows">${ds.map((d) => {
       const v = dietaEm(S.db, d, h), bruta = vigente(d.versoes, h);
       const usando = M().ativos.filter((r) => r.dietaId === d.id);
-      return `<div class="item"><div class="ih"><div><b>${esc(d.nome)}</b><div class="note">${n2(v.pv)}% do peso vivo · ${n1(v.ms)}% de matéria seca${usando.length ? " · em uso: " + usando.map((r) => esc(r.lote.numero)).join(", ") : ""}</div></div>
+      return `<div class="item"><div class="ih"><div><b>${esc(d.nome)}</b><div class="note">${n2(v.pv)}% do peso vivo em ${v.base === "ms" ? "matéria seca" : "matéria natural"} · dieta com ${n1(v.ms)}% de matéria seca${usando.length ? " · em uso: " + usando.map((r) => esc(r.lote.numero)).join(", ") : ""}</div></div>
         <div style="text-align:right"><span class="mono">${rs(v.custoKg, 3)}/kg</span><div class="note">${rs(v.custoKg * 1000, 0)} por tonelada</div></div></div>
         <div class="tw"><table><thead><tr><th>Ingrediente</th><th class="r">%</th><th class="r">R$/t hoje</th><th class="r">Pesa no kg</th></tr></thead><tbody>
         ${v.itens.map((it) => `<tr><td>${esc(it.nome)}</td><td class="r">${n1(it.pct)}%</td><td class="r">${rs(it.rT, 0)}</td><td class="r">${rs(it.parte, 3)}</td></tr>`).join("")}</tbody></table></div>
-        ${histPrecos(d.versoes, (x) => `${n2(x.pv)}% PV · ${(x.itens || []).length} ingredientes`)}
+        ${histPrecos(d.versoes, (x) => `${n2(x.pv)}% PV ${x.base === "ms" ? "MS" : "MN"} · ${(x.itens || []).length} ingredientes`)}
         <details class="mais"><summary>Mudar a composição ou corrigir o nome</summary>
           <form data-versao="${d.id}" novalidate style="display:flex;flex-direction:column;gap:12px">
-            <div class="fgrid">${campoData("dv" + d.id + "-d", "Nova composição vale a partir de")}${campo("dv" + d.id + "-pv", "% do peso vivo por dia", { tipo: "number", v: bruta.pv })}</div>
+            <div class="fgrid">${campoData("dv" + d.id + "-d", "Nova composição vale a partir de")}${campo("dv" + d.id + "-pv", "% do peso vivo por dia", { tipo: "number", v: bruta.pv })}${seg("dv" + d.id + "-base", "O consumo é em", [["ms", "Matéria seca"], ["mn", "Matéria natural"]], bruta.base === "ms" ? "ms" : "mn")}</div>
             ${blocoItens("dv" + d.id, bruta.itens)}
             <p class="note">A composição nova vale só da data informada em diante. O custo dos dias anteriores não muda.</p>
             <div class="actions"><button class="btn ghost sm" type="submit">Salvar nova composição</button></div></form>
@@ -209,7 +291,7 @@ TELAS["trato/dietas"] = {
   ligarLista() {
     $$("form[data-versao]").forEach((f) => {
       const id = f.dataset.versao, pfx = "dv" + id;
-      ligarItens(f, pfx, () => val(pfx + "-d") || hoje(), () => num(val(pfx + "-pv")));
+      ligarItens(f, pfx, () => val(pfx + "-d") || hoje(), () => num(val(pfx + "-pv")), () => marcado(pfx + "-base") || "mn");
       f.onsubmit = (ev) => {
         ev.preventDefault();
         const d = porId("dietas", id), data = val(pfx + "-d"), pv = num(val(pfx + "-pv")), r = lerItens(pfx);
@@ -219,7 +301,7 @@ TELAS["trato/dietas"] = {
         if (!r.itens.length) e.push([pfx + "-ing-0", "Escolha pelo menos um ingrediente."]);
         else if (!r.e.length && !r.ok100) e.push([pfx + "-pct-0", `A soma das % está em ${n1(r.soma)}%. Tem que dar 100%.`]);
         if (!erros(f, e)) return;
-        store.gravar([{ tipo: "update", col: "dietas", id, dados: { versoes: comPreco(d.versoes, { desde: data, pv, itens: r.itens }) } }]);
+        store.gravar([{ tipo: "update", col: "dietas", id, dados: { versoes: comPreco(d.versoes, { desde: data, pv, base: marcado(pfx + "-base") === "ms" ? "ms" : "mn", itens: r.itens }) } }]);
         toast(`Dieta ${d.nome}: nova composição a partir de ${d2(data)}.`);
       };
     });

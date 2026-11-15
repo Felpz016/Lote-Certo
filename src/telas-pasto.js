@@ -1,7 +1,7 @@
 // Manejo de pasto: disposição dos lotes, mudança de pasto e cadastro de pastos.
 import {
   store, S, M, $, $$, esc, d2, n0, n1, n2, rs, num, tagLote, toast, msgSalvo, erros, ativos, lotePorId, nomeDe, ordenados,
-  opcoesLotes, campo, campoData, sel, val, confirmar, histPrecos, comPreco, TELAS, hoje,
+  opcoesLotes, campo, campoData, sel, val, confirmar, histPrecos, comPreco, TELAS, hoje, soCampo,
 } from "./base.js";
 import { dias, vigente } from "./calc.js";
 import { opcoesPasto } from "./telas-lotes.js";
@@ -11,8 +11,10 @@ TELAS["pasto/disposicao"] = {
   lista() {
     const ps = M().pastos, h = hoje();
     if (!ps.length) return `<section class="card"><h3>Nenhum pasto cadastrado</h3><p class="note" style="margin:8px 0 14px">Cadastre os pastos com área e custo por hectare para o sistema dividir o custo entre os lotes.</p><div class="actions"><button class="btn" type="button" data-act="ir" data-to="pasto/cadastro">Cadastrar pastos</button></div></section>`;
+    const sc = soCampo(), acima = ps.filter((p) => p.acima);
     const semPasto = M().ativos.filter((r) => !r.pastoId || !ps.some((p) => p.pasto.id === r.pastoId));
     return `
+    ${acima.length ? `<div class="banner bad"><span><b>Lotação acima da capacidade:</b> ${acima.map((p) => `${esc(p.pasto.nome)} está com ${n2(p.ua)} UA/ha e aguenta ${n2(p.capacidade)}`).join(" · ")}. Mude um lote de pasto ou aparte.</span></div>` : ""}
     <div class="grid3">${ps.map((p) => `
       <section class="card pcard${p.cabecas ? "" : " vazio"}">
         <div><span class="kicker">${esc(p.pasto.capim || "capim não informado")} · ${n1(p.pasto.area)} ha</span><h3>${esc(p.pasto.nome)}</h3></div>
@@ -20,14 +22,16 @@ TELAS["pasto/disposicao"] = {
         <div class="lotes">${p.lotes.map((r) => `<button type="button" data-act="lote" data-id="${r.lote.id}" aria-label="Abrir lote ${esc(r.lote.numero)}">${tagLote(r.lote)}</button>`).join("")}</div>
         <div class="nums">
           <div><span class="label">Cabeças</span><b>${n0(p.cabecas)}</b></div>
-          <div><span class="label">Cab/ha</span><b>${n2(p.lotacao)}</b></div>
-          <div><span class="label">Custo/dia</span><b>${rs(p.custoDia, 0)}</b></div>
+          <div><span class="label">UA/ha</span><b>${n2(p.ua)}</b></div>
+          ${sc ? `<div><span class="label">Cab/ha</span><b>${n2(p.lotacao)}</b></div>` : `<div><span class="label">Custo/dia</span><b>${rs(p.custoDia, 0)}</b></div>`}
         </div>
-        <p class="note">Ocupado desde ${d2(p.desde)} (${dias(p.desde, h)} dias) · ${rs(p.custoDia / p.cabecas)} por cabeça por dia${p.lotes.some((r) => r.piquete) ? " · piquete " + esc([...new Set(p.lotes.map((r) => r.piquete).filter(Boolean))].join(", ")) : ""}</p>`
-        : `<p class="note"><b>Vazio${p.vazioHa != null ? ` há ${p.vazioHa} ${p.vazioHa === 1 ? "dia" : "dias"}` : ""}.</b> Em descanso. Custo de ${rs(p.custoDia)} por dia sem lote para pagar.</p>`}
-        ${p.ocioso > 0 ? `<p class="note">Pasto ocioso nos últimos 12 meses: ${rs(p.ocioso, 0)}.</p>` : ""}
+        ${p.capacidade ? `<div class="meter${p.acima ? " over" : ""}" role="img" aria-label="Lotação de ${n2(p.ua)} UA por hectare, capacidade de ${n2(p.capacidade)}"><i style="width:${Math.min(100, (p.ua / p.capacidade) * 100)}%"></i></div>
+        <p class="note"><b>${p.acima ? "Acima da capacidade" : "Dentro da capacidade"}:</b> ${n0((p.ua / p.capacidade) * 100)}% de ${n2(p.capacidade)} UA/ha${p.acima ? "" : ` · cabem mais ${n1((p.capacidade - p.ua) * p.pasto.area)} UA`}</p>` : ""}
+        <p class="note">Ocupado desde ${d2(p.desde)} (${dias(p.desde, h)} dias) · ${n2(p.lotacao)} cab/ha${sc ? "" : ` · ${rs(p.custoDia / p.cabecas)} por cabeça por dia`}${p.lotes.some((r) => r.piquete) ? " · piquete " + esc([...new Set(p.lotes.map((r) => r.piquete).filter(Boolean))].join(", ")) : ""}</p>`
+        : `<p class="note"><b>Vazio${p.vazioHa != null ? ` há ${p.vazioHa} ${p.vazioHa === 1 ? "dia" : "dias"}` : ""}.</b> Em descanso.${sc ? "" : ` Custo de ${rs(p.custoDia)} por dia sem lote para pagar.`}${p.capacidade ? ` Aguenta ${n1(p.capacidade * p.pasto.area)} UA.` : ""}</p>`}
+        ${p.ocioso > 0 && !sc ? `<p class="note">Pasto ocioso nos últimos 12 meses: ${rs(p.ocioso, 0)}.</p>` : ""}
       </section>`).join("")}</div>
-    ${semPasto.length ? `<div class="banner"><span><b>Lotes sem pasto:</b> ${semPasto.map((r) => esc(r.lote.numero)).join(", ")}. Sem pasto, o custo de pasto não entra na conta do lote.</span><button class="btn sm" type="button" data-act="ir" data-to="pasto/mudanca">Colocar num pasto</button></div>` : ""}
+    ${semPasto.length ? `<div class="banner"><span><b>Lotes sem pasto:</b> ${semPasto.map((r) => esc(r.lote.numero)).join(", ")}.${sc ? "" : " Sem pasto, o custo de pasto não entra na conta do lote."}</span><button class="btn sm" type="button" data-act="ir" data-to="pasto/mudanca">Colocar num pasto</button></div>` : ""}
     <div class="actions"><button class="btn" type="button" data-act="ir" data-to="pasto/mudanca">Mudar lote de pasto</button></div>`;
   },
 };
@@ -95,7 +99,8 @@ TELAS["pasto/cadastro"] = {
         ${campo("pa-area", "Área (hectares)", { tipo: "number", ph: "20" })}
         ${campo("pa-capim", "Espécie do capim", { ph: "Ex.: Braquiária brizantha" })}
         ${campo("pa-custo", "Custo estimado (R$ por hectare por ano)", { tipo: "number", ph: "730" })}
-        ${campo("pa-piq", "Piquetes", { ph: "opcional. Ex.: 1A, 1B, 1C", full: true })}
+        ${campo("pa-cap", "Capacidade de suporte (UA por hectare)", { tipo: "number", ph: "opcional. Ex.: 1,5", hint: "1 UA = 450 kg de peso vivo. O sistema avisa quando a lotação passar disso." })}
+        ${campo("pa-piq", "Piquetes", { ph: "opcional. Ex.: 1A, 1B, 1C" })}
       </div>
       <p class="note" id="pa-conta"></p>
       <div class="actions"><button class="btn" type="submit">Cadastrar pasto</button></div>
@@ -116,7 +121,7 @@ TELAS["pasto/cadastro"] = {
       if (custo == null || custo < 0) e.push(["pa-custo", "Informe o custo por hectare por ano (pode ser 0)."]);
       if (!erros(f, e)) return;
       // Lançamentos com data anterior ao cadastro usam este primeiro custo.
-      store.gravar([{ tipo: "set", col: "pastos", id: store.novoId(), dados: { nome, area, capim: val("pa-capim"), piquetes: val("pa-piq"), precos: [{ desde: hoje(), valor: custo }] } }]);
+      store.gravar([{ tipo: "set", col: "pastos", id: store.novoId(), dados: { nome, area, capim: val("pa-capim"), piquetes: val("pa-piq"), capacidade: num(val("pa-cap")), precos: [{ desde: hoje(), valor: custo }] } }]);
       toast(`${nome} cadastrado. ${msgSalvo()}`);
       f.reset(); conta();
     };
@@ -127,7 +132,7 @@ TELAS["pasto/cadastro"] = {
     return `<section class="card"><div class="sec-h"><h3>Pastos cadastrados</h3><span class="note">${ps.length} · ${n1(ps.reduce((s, p) => s + (p.area || 0), 0))} ha</span></div>
     <div class="rows">${ps.map((p) => {
       const v = vigente(p.precos, hoje());
-      return `<div class="item"><div class="ih"><div><b>${esc(p.nome)}</b><div class="note">${n1(p.area)} ha · ${esc(p.capim || "capim não informado")}${p.piquetes ? " · piquetes: " + esc(p.piquetes) : ""}</div></div>
+      return `<div class="item"><div class="ih"><div><b>${esc(p.nome)}</b><div class="note">${n1(p.area)} ha · ${esc(p.capim || "capim não informado")}${p.capacidade ? ` · capacidade ${n2(p.capacidade)} UA/ha` : ""}${p.piquetes ? " · piquetes: " + esc(p.piquetes) : ""}</div></div>
         <div style="text-align:right"><span class="mono">${rs(v ? v.valor : 0)}/ha/ano</span><div class="note">${rs(v ? (v.valor * p.area) / 365 : 0)} por dia</div></div></div>
         ${histPrecos(p.precos, (x) => rs(x.valor) + "/ha/ano")}
         <details class="mais"><summary>Mudar o custo ou corrigir o cadastro</summary>
@@ -136,7 +141,7 @@ TELAS["pasto/cadastro"] = {
             <button class="btn ghost sm" type="submit">Salvar novo custo</button></form>
           <p class="note" style="margin:8px 0">O custo novo vale só da data informada em diante. Os dias anteriores continuam com o custo antigo.</p>
           <form class="rowf" data-edit="${p.id}" novalidate>
-            ${campo("pe-n-" + p.id, "Nome", { v: p.nome })}${campo("pe-a-" + p.id, "Área (ha)", { tipo: "number", v: p.area })}${campo("pe-c-" + p.id, "Capim", { v: p.capim })}${campo("pe-p-" + p.id, "Piquetes", { v: p.piquetes })}
+            ${campo("pe-n-" + p.id, "Nome", { v: p.nome })}${campo("pe-a-" + p.id, "Área (ha)", { tipo: "number", v: p.area })}${campo("pe-c-" + p.id, "Capim", { v: p.capim })}${campo("pe-p-" + p.id, "Piquetes", { v: p.piquetes })}${campo("pe-u-" + p.id, "Capacidade (UA/ha)", { tipo: "number", v: p.capacidade })}
             <button class="btn ghost sm" type="submit">Salvar cadastro</button>
             <button class="mini danger" type="button" data-excluir="${p.id}" data-confirm="Confirmar exclusão do pasto">Excluir pasto</button></form>
         </details></div>`;
@@ -163,7 +168,7 @@ TELAS["pasto/cadastro"] = {
         if (!nome) e.push(["pe-n-" + id, "Informe o nome."]);
         if (!area || area <= 0) e.push(["pe-a-" + id, "Informe a área."]);
         if (!erros(f, e)) return;
-        store.gravar([{ tipo: "update", col: "pastos", id, dados: { nome, area, capim: val("pe-c-" + id), piquetes: val("pe-p-" + id) } }]);
+        store.gravar([{ tipo: "update", col: "pastos", id, dados: { nome, area, capim: val("pe-c-" + id), piquetes: val("pe-p-" + id), capacidade: num(val("pe-u-" + id)) } }]);
         toast("Cadastro do pasto atualizado.");
       };
     });
