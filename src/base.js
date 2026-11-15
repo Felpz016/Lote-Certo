@@ -146,10 +146,11 @@ export const MODS = [
   { k: "trato", s: "Trato", l: "Trato", abas: [["dia", "Trato do dia"], ["real", "Fornecimento real"], ["troca", "Troca de dieta"], ["dietas", "Dietas"], ["ingredientes", "Ingredientes"]] },
   { k: "custos", s: "Custos", l: "Custos fixos e gerais", abas: [["fixos", "Custos fixos"], ["gerais", "Custos gerais"]] },
   { k: "saida", s: "Saída", l: "Saída", abas: [["saida", "Saída de lote"], ["historico", "Histórico"]] },
+  { k: "indices", s: "Índices", l: "Índices do mercado" },
   { k: "financeiro", s: "Financeiro", l: "Financeiro", abas: [["geral", "Visão geral"], ["lotes", "Por lote"], ["areas", "Por área"], ["projecao", "Projeção"], ["relatorios", "Relatórios"]] },
 ];
 // O perfil "campo" só enxerga o que ele lança, sem telas de custo, preço, saída ou financeiro.
-const ABAS_CAMPO = { painel: null, lotes: ["ativos"], pasto: ["disposicao", "mudanca"], pesagem: ["pesagem"], sanidade: ["protocolo", "tratamento", "calendario"], trato: ["dia", "real", "troca"] };
+const ABAS_CAMPO = { painel: null, indices: null, lotes: ["ativos"], pasto: ["disposicao", "mudanca"], pesagem: ["pesagem"], sanidade: ["protocolo", "tratamento", "calendario"], trato: ["dia", "real", "troca"] };
 export const mods = () => (!campo_() ? MODS : MODS.filter((m) => m.k in ABAS_CAMPO).map((m) => (m.abas ? { ...m, abas: m.abas.filter((a) => ABAS_CAMPO[m.k].includes(a[0])) } : m)));
 export const ir = (r) => { location.hash = r; };
 /** Ganchos que a casca preenche (evita importação em círculo). */

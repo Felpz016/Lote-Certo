@@ -1,0 +1,19 @@
+name: Sonda de índices (temporário)
+
+# Só lê páginas públicas e mostra o que veio. Não usa segredos e não grava nada. Sai antes de ir para a main.
+on:
+  push:
+    branches: [claude/project-thread-eup04h]
+    paths: [scripts/sonda-indices.mjs, .github/workflows/sonda.yml]
+
+jobs:
+  sonda:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/sonda-indices.mjs

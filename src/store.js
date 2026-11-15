@@ -16,6 +16,7 @@ import {
 } from "firebase/firestore";
 import { firebaseConfig } from "./firebase-config.js";
 import { exemplo } from "./exemplo.js";
+import { indicesExemplo } from "./indices-exemplo.js";
 
 // lotes, pesagens, sanidade (protocolo e tratamento), saidas,
 // pastos, movs (mudanças de pasto), gmds (ajustes do GMD estimado),
@@ -101,6 +102,7 @@ function storeNuvem(avisar, config, emulador) {
     fazendaId: null,
     membros: [],
     perfil: "dono",       // dono, gerente ou campo (sócio ou funcionário)
+    indices: undefined,   // preços e notícias do dia (publico/indices); undefined = ainda buscando
     admin: false,
     adminContas: null,    // só para o administrador: lista de contas com a assinatura de cada uma
     carregado: false,
@@ -432,6 +434,7 @@ function storeDemo(avisar) {
     fazendaId: tudo.atual,
     membros: [],
     perfil: new URLSearchParams(location.search).get("perfil") === "campo" ? "campo" : "dono",
+    indices: indicesExemplo(),
     admin: false,
     adminContas: null,
     carregado: true,

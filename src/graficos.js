@@ -70,19 +70,27 @@ export function colunasSaldo({ dados, fmt = rsK, altura = 200, nome = "Gráfico"
 }
 
 /** Linha de uma série só. dados: [{ rot, v }] (v nulo vira falha na linha). */
-export function linha({ dados, fmt = rsK, altura = 200, nome = "Gráfico", cor = COR.neutro, rotulo = "" }) {
+export function linha({ dados, fmt = rsK, altura = 200, nome = "Gráfico", cor = COR.neutro, rotulo = "", doZero = true }) {
   const vs = dados.map((d) => d.v).filter((v) => v != null);
   if (vs.length < 2) return '<p class="empty">Ainda não há meses suficientes para desenhar a linha.</p>';
-  const max = teto(Math.max(...vs)), n = dados.length;
-  const x = (i) => (n === 1 ? 50 : (i / (n - 1)) * 100), y = (v) => 100 - (v / max) * 100;
+  // Preço não precisa partir do zero: o eixo pega uma faixa redonda em volta dos valores (4 divisões).
+  let lo = 0, max = teto(Math.max(...vs));
+  if (!doZero) {
+    const a = Math.min(...vs), b = Math.max(...vs), bruto = (b - a || Math.abs(b) * 0.02 || 1) / 3, p = 10 ** Math.floor(Math.log10(bruto));
+    const passo = [1, 2, 2.5, 5, 10].map((k) => k * p).find((k) => k >= bruto);
+    lo = Math.floor(a / passo) * passo; max = lo + passo * 4;
+    if (max < b) max = lo + passo * 5;
+  }
+  const n = dados.length, pos = (v) => ((v - lo) / (max - lo)) * 100;
+  const x = (i) => (n === 1 ? 50 : (i / (n - 1)) * 100), y = (v) => 100 - pos(v);
   let caminho = "", aberto = false;
   dados.forEach((d, i) => { if (d.v == null) { aberto = false; return; } caminho += `${aberto ? "L" : "M"}${x(i).toFixed(2)} ${y(d.v).toFixed(2)} `; aberto = true; });
   const ult = dados.map((d, i) => ({ ...d, i })).filter((d) => d.v != null).pop();
   return `<div class="graf linha" style="--h:${altura}px" role="img" aria-label="${esc(nome)}. Os números estão na tabela logo abaixo.">
-    <div class="g-corpo"><div class="g-y">${eixoY(max, fmt)}</div>
+    <div class="g-corpo"><div class="g-y">${Array.from({ length: 5 }, (_, i) => `<span style="bottom:${i * 25}%">${curto(fmt(lo + ((max - lo) * i) / 4))}</span>`).join("")}</div>
       <div class="g-plot">${grade()}<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path d="${caminho}" fill="none" stroke="${cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>
-        ${dados.map((d, i) => (d.v == null ? "" : `<b class="g-pt${d === dados[ult.i] ? " fim" : ""}" tabindex="0" style="left:${x(i)}%;bottom:${(d.v / max) * 100}%;--c:${cor}" data-tip="${dica([d.rot, `${rotulo}: ${fmt(d.v)}`])}"></b>`)).join("")}
-        <span class="g-fim" style="left:${x(ult.i)}%;bottom:${(ult.v / max) * 100}%">${fmt(ult.v)}</span></div></div>
+        ${dados.map((d, i) => (d.v == null ? "" : `<b class="g-pt${d === dados[ult.i] ? " fim" : ""}" tabindex="0" style="left:${x(i)}%;bottom:${pos(d.v)}%;--c:${cor}" data-tip="${dica([d.rot, `${rotulo}: ${fmt(d.v)}`])}"></b>`)).join("")}
+        <span class="g-fim" style="left:${x(ult.i)}%;bottom:${pos(ult.v)}%">${fmt(ult.v)}</span></div></div>
     <div class="g-x linha">${dados.map((d, i) => `<span class="${(n - 1 - i) % Math.max(1, Math.ceil(n / 6)) === 0 ? "" : "opt"}">${esc(d.rot)}</span>`).join("")}</div>
   </div>`;
 }

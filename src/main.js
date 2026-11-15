@@ -14,6 +14,7 @@ import "./telas-trato.js";
 import "./telas-custos.js";
 import "./telas-saida.js";
 import "./telas-financeiro.js";
+import "./telas-indices.js";
 
 const LOGO = '<svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="1" y="1" width="30" height="30" rx="9" fill="#F4B92F"/><path d="M8 22V10M8 22h7M18 16.5l3 3.5 5-8" stroke="#241A02" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const dataHora = (ms) => new Date(ms).toLocaleDateString("pt-BR");
@@ -117,7 +118,7 @@ function render() {
   renderStatus();
   renderAvisos();
 
-  const novaAss = JSON.stringify([S.db, S.fazendas, S.fazendaId, S.membros, S.assinatura, S.perfil]);
+  const novaAss = JSON.stringify([S.db, S.fazendas, S.fazendaId, S.membros, S.assinatura, S.perfil, S.indices]);
   const dadosMudaram = novaAss !== assinatura;
   assinatura = novaAss;
 
