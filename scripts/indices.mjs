@@ -119,11 +119,14 @@ const TEMAS = [
 ];
 const FORA = /su[íi]n|frango|(?<![a-zà-ú])aves?(?![a-zà-ú])|leite|caf[ée](?![a-zà-ú])|(?<![a-zà-ú])cana(?![a-zà-ú])|algod|laranja|cacau|pescado|peixe|(?<![a-zà-ú])ovos?(?![a-zà-ú])|hortali|flores|vinho|(?<![a-zà-ú])uvas?(?![a-zà-ú])|banana/;
 
+/** Resumo de até 280 letras, cortado em palavra inteira; reticências quando a frase ficou pela metade. */
+const curto = (r) => { const c = r.length > 280 ? r.slice(0, 280).replace(/\s\S*$/, "") : r; return c && !/[.!?…"”)]$/.test(c) ? c.replace(/[,;:\s]+$/, "") + "…" : c; };
 function itensRss(xml) {
   return [...xml.matchAll(/<item[\s\S]*?<\/item>/g)].map((m) => {
     const it = m[0], tag = (t) => (it.match(new RegExp(`<${t}[^>]*>([\\s\\S]*?)<\\/${t}>`)) || [])[1];
-    const resumo = limpar(tag("atom:subtitle") || tag("description")).replace(/^\s*(Leia mais|Continue lendo).*/i, "");
-    return { titulo: limpar(tag("title")), link: limpar(tag("link")), data: new Date(limpar(tag("pubDate"))).toISOString(), resumo: resumo.slice(0, 280).replace(/\s\S*$/, resumo.length > 280 ? "…" : ""), cats: [...it.matchAll(/<category>([\s\S]*?)<\/category>/g)].map((c) => limpar(c[1])).join(" ") };
+    const resumo = limpar(tag("atom:subtitle") || tag("description")).replace(/^\s*(Leia mais|Continue lendo).*/i, "")
+      .replace(/\s*O post .*$/i, "").replace(/^Fotos?\s*[:;][^.]*\.\s*/i, "").trim();
+    return { titulo: limpar(tag("title")), link: limpar(tag("link")), data: new Date(limpar(tag("pubDate"))).toISOString(), resumo: curto(resumo), cats: [...it.matchAll(/<category>([\s\S]*?)<\/category>/g)].map((c) => limpar(c[1])).join(" ") };
   }).filter((n) => n.titulo && n.link && !Number.isNaN(Date.parse(n.data)));
 }
 const normal = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");

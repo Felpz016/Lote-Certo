@@ -107,7 +107,7 @@ TELAS["indices"] = {
       ${(ix.curva || []).length ? `<section class="card"><div class="sec-h"><div><h3>Boi gordo na B3 por vencimento</h3><span class="note">pregão de ${d2(ix.curvaData)} · último negócio de cada mês</span></div></div>
         <div class="tw"><table class="compacta"><thead><tr><th>Entrega em</th><th class="r">R$/@</th><th class="r">No dia</th></tr></thead><tbody>
         ${ix.curva.map((x) => `<tr><td>${esc(x.mes)}</td><td class="r"><b>${real(x.v)}</b></td><td class="r">${x.var == null ? "—" : varTxt(x.var)}</td></tr>`).join("")}</tbody></table></div>
-        <p class="note" style="margin-top:8px">Quanto a bolsa paga hoje pela arroba entregue em cada mês. Serve de referência para planejar a venda.</p>
+        <p class="note" style="margin-top:8px">Quanto a bolsa paga hoje pela arroba entregue em cada mês. Os contratos fecham pelo Indicador do Boi DATAGRO, então servem de referência para planejar a venda.</p>
       </section>` : ""}
     </div>
     ${(ix.pracas || []).length ? `<section class="card"><div class="sec-h"><div><h3>Arroba por praça</h3><span class="note">${esc(ix.pracasFonte || "")}${ix.pracasData ? ` · ${d2(ix.pracasData)}` : ""}</span></div></div>
