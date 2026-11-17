@@ -10,7 +10,7 @@ O que tem aqui:
 | `site/` | Site de vendas. Vai para a raiz do endereço. |
 | `src/`, `public/` | O sistema. Vai para `/app/`. Funciona sem internet. |
 | `firestore.rules` | Regras de acesso do banco. |
-| `testes/` | Testes automáticos: `fluxo-demo.js` (todas as áreas, sem banco) e `e2e.js` (login, assinatura e regras, com emuladores). |
+| `testes/` | Testes automáticos: `playwright/` (casos por área, no computador e no celular, veja o LEIA-ME de lá), `fluxo-demo.js` (todas as áreas, sem banco) e `e2e.js` (login, assinatura e regras, com emuladores). |
 
 ## Áreas do sistema
 

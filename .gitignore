@@ -3,3 +3,5 @@ dist/
 *.log
 .firebase/
 shots/
+testes/relatorio/
+testes/resultados/
